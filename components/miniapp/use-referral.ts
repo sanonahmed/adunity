@@ -8,7 +8,6 @@ import {
 } from "@/lib/referral";
 
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
-const APP_SHORT_NAME = process.env.NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME;
 
 /** Server error codes -> readable copy. Unknown codes never leak internals. */
 export const REFERRAL_ERROR_COPY: Record<string, string> = {
@@ -90,9 +89,7 @@ export function useReferral(initData: string): ReferralState {
 
   return {
     summary,
-    inviteLink: summary
-      ? buildInviteLink(summary.code, BOT_USERNAME, APP_SHORT_NAME)
-      : null,
+    inviteLink: summary ? buildInviteLink(summary.code, BOT_USERNAME) : null,
     loading,
     error,
     retry,

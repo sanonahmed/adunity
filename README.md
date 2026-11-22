@@ -34,11 +34,10 @@ Copy `.env.example` to `.env.local` before deploying. Set `TELEGRAM_BOT_TOKEN`
 server-side for `POST /api/auth` and `/api/referral`; it must be the current token
 from BotFather and must never use a `NEXT_PUBLIC_` prefix. Set `ADUNITY_DB_PATH` to a
 persistent writable SQLite file in production (otherwise the default `.data` path is
-used). After creating a Telegram bot/Mini App with BotFather, set
-`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (required for invite links) and optionally
-`NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME`; the browser-only **Open in Telegram** link
-appears as soon as the username is set (hidden inside Telegram). Rebuild after changing
-`NEXT_PUBLIC_*` values.
+used). After creating the bot with BotFather, set
+`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (required for invite links); the browser-only
+**Open in Telegram** link appears as soon as the username is set (hidden inside
+Telegram). Rebuild after changing `NEXT_PUBLIC_*` values.
 
 ## Structure
 
@@ -122,7 +121,10 @@ everything else is `401` (`bad_signature`, `expired`, `missing_hash`, `malformed
    inviter from the **signed** `start_param` (`ref_<code>`). Client-supplied ids,
    codes and counts are ignored.
 3. `recordVisit` runs inside one `BEGIN IMMEDIATE` transaction, so an account and its
-   attribution are committed together and first-touch wins on replay.
+   attribution are committed together. An account is attributed once, on the first
+   launch that carries a valid code — including accounts that already existed because
+   the person opened the app from the menu button earlier. `referred_telegram_id` is
+   the primary key, so replays and later links cannot change the referrer.
 4. The response holds only that caller's code, verified invite count and recent
    sign-up timestamps; invitee names are never stored or returned.
 
@@ -131,11 +133,12 @@ Prerequisites — the panel stays locked until these are true:
 - `TELEGRAM_BOT_TOKEN` is a fresh token from @BotFather. If it is missing, both API
   routes fail closed and the panel explains that referral data is unavailable
   (`/api/referral` answers `503 server_not_configured`).
-- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` is set, so a shareable invite link can be built.
-  `NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME` is optional: with it the link is
-  `https://t.me/<bot>/<app>?startapp=ref_<code>`, without it the bot's main Mini App is
-  addressed as `https://t.me/<bot>?startapp=ref_<code>`. Both forms pass the value to
-  the Mini App as the signed `start_param`.
+- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` is set, so a shareable invite link can be built:
+  `https://t.me/<bot>?startapp=ref_<code>`. That form opens the bot's main Mini App and
+  hands it the code as the signed `start_param`. The `https://t.me/<bot>/<short_name>`
+  form is never built: it only resolves for a short name registered with BotFather
+  `/newapp`, and otherwise Telegram answers "bot application not found" — every invite
+  link would fail.
 
 Referral data is deliberately unavailable in a plain browser: there is no signed
 Telegram launch, so there is no trustworthy identity to attach a code to.
@@ -144,14 +147,17 @@ Telegram launch, so there is no trustworthy identity to attach a code to.
 
 1. Deploy this Next.js app to an HTTPS host (for example Vercel). Use the same deployed
    URL for the website and Telegram Mini App; Telegram requires HTTPS.
-2. Create/configure a bot with `@BotFather`, then create its Mini App with `/newapp`
-   and set the deployed site URL. BotFather supplies the Mini App short name.
-3. Set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (without `@`) — and, if you created a named
-   Mini App with `/newapp`, `NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME` — then rebuild and
-   deploy. The site's **Open in Telegram** link and referral invite links appear as soon
-   as the bot username is set.
-4. Configure the bot menu button in BotFather to open the same Mini App. Set
-   `TELEGRAM_BOT_TOKEN` as a server-only host secret to enable `POST /api/auth` and `/api/referral`. Set `ADUNITY_DB_PATH` to a persistent writable SQLite file; ephemeral serverless filesystems cannot persist referral records.
+2. Create/configure the bot with `@BotFather` and set its **menu button** to the
+   deployed URL: `/setmenubutton`, or `/mybots` → *Bot Settings* → *Menu Button* →
+   *Configure menu button*. Telegram opens that URL as the bot's **main Mini App**,
+   which is the app every invite link launches. `/newapp` is optional: it only adds a
+   *named* Mini App, and the short name it returns is not used here.
+3. Set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (without `@`), then rebuild and deploy. The
+   site's **Open in Telegram** link and every invite link
+   (`https://t.me/<bot>?startapp=ref_<code>`) appear as soon as it is set.
+4. Set `TELEGRAM_BOT_TOKEN` as a server-only host secret to enable `POST /api/auth` and
+   `/api/referral`. Set `ADUNITY_DB_PATH` to a persistent writable SQLite file;
+   ephemeral serverless filesystems cannot persist referral records.
 
 The same frontend runs in a normal browser and Telegram's WebView. Telegram-specific
 capabilities (native Back button, haptics, and Telegram-provided profile identity) only
@@ -162,11 +168,28 @@ Telegram Mini App; use an HTTPS deployment or tunnel for Telegram testing.
 `next.config.ts` sends `Content-Security-Policy: frame-ancestors` for Telegram origins;
 `X-Frame-Options` has no "allow all" value and is intentionally not used.
 
+### Troubleshooting invite links
+
+- **"Bot application not found"** — the URL named a Mini App short name that does not
+  exist. This app never builds such links; if you pasted one by hand, use
+  `https://t.me/<bot>?startapp=ref_<code>`. If the bot-only link opens the chat without
+  launching anything, the menu button from step 2 is not configured.
+- **"Invite links are not configured yet"** in the Referral tab —
+  `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` was empty at *build* time. `NEXT_PUBLIC_*` values
+  are inlined into the bundle, so update the variable and rebuild/redeploy.
+- **"Referral verification is not configured"** — `TELEGRAM_BOT_TOKEN` is missing on the
+  server. A `401` instead means the token belongs to a different bot than the one that
+  launched the Mini App.
+- **An invite is not counted** — the invitee has to open the invite link itself; opening
+  the bot's menu button carries no code. Attribution happens once per account, on the
+  first launch that carries a valid code, so later links cannot move an invitee to a
+  different referrer.
+
 ## Production readiness
 
 `npm run build` produces the same optimized Next.js app for the website and Telegram.
-For a Telegram launch, deploy it to HTTPS, configure the BotFather Mini App URL and
-short name, and provide `TELEGRAM_BOT_TOKEN` as a fresh server-only BotFather secret. The `/api/auth` route validates Telegram `initData`; `/api/referral` additionally persists verified invite codes and first-touch attribution in SQLite. Set `ADUNITY_DB_PATH` to a durable writable volume in production: ephemeral serverless filesystems lose referral records after restart. Invitees launch with `?startapp=ref_<code>`. Real campaigns, earnings, and payouts remain unavailable until reward policy and payout accounting are configured.
+For a Telegram launch, deploy it to HTTPS, set the BotFather menu button to that URL,
+and provide `TELEGRAM_BOT_TOKEN` as a fresh server-only BotFather secret. The `/api/auth` route validates Telegram `initData`; `/api/referral` additionally persists verified invite codes and first-touch attribution in SQLite. Set `ADUNITY_DB_PATH` to a durable writable volume in production: ephemeral serverless filesystems lose referral records after restart. Invitees launch with `?startapp=ref_<code>`. Real campaigns, earnings, and payouts remain unavailable until reward policy and payout accounting are configured.
 
 ## Not built yet
 

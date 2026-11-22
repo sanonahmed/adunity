@@ -168,11 +168,16 @@ export type RecordVisitResult = {
 };
 
 /**
- * Record a verified visit and, on first contact only, attribute the invite.
+ * Record a verified visit and attribute the invite named by `start_param`.
  *
  * Rules, all enforced here rather than in the UI:
- *   - first seen wins: an existing account is never re-attributed;
- *   - one referrer per invitee (`referred_telegram_id` is the primary key);
+ *   - attribution is once per account, but not only on the very first visit:
+ *     an account that has no referrer yet is still attributed when a valid
+ *     code arrives. People routinely open the Mini App from the menu button
+ *     before a friend's link reaches them, and that earlier visit must not
+ *     burn their only chance to be counted;
+ *   - the first referrer wins: `referred_telegram_id` is the primary key, so
+ *     later links and replays change nothing;
  *   - self-referral is ignored;
  *   - a start parameter naming an unknown code is ignored.
  */
@@ -206,7 +211,7 @@ export function recordVisit(
     }
 
     let attributed = false;
-    const code = created ? parseReferralCode(startParam) : null;
+    const code = parseReferralCode(startParam);
 
     if (code) {
       const referrer = db

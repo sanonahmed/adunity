@@ -66,31 +66,36 @@ export function parseReferralCode(startParam: string | null | undefined): string
 }
 
 /**
- * Builds the shareable Telegram link for an invite code.
+ * Builds the shareable Telegram link for an invite code:
  *
- *   with a short name: `https://t.me/<bot>/<app>?startapp=ref_<code>`
- *   without one:       `https://t.me/<bot>?startapp=ref_<code>`
+ *   `https://t.me/<bot>?startapp=ref_<code>`
  *
- * Both are documented direct links, and both deliver the value to the Mini App
- * as the signed `start_param`. A short name is optional: only the bot username
- * is required, so a bot whose Mini App is opened from its menu button still
- * gets working invites. Returns null when there is nothing valid to link to.
+ * This form opens the bot's *main* Mini App (the one behind its menu button)
+ * and hands it `ref_<code>` as the signed `start_param`.
+ *
+ * The `https://t.me/<bot>/<short_name>?startapp=...` form is deliberately not
+ * produced. It only resolves when a Mini App was registered under that exact
+ * short name with BotFather `/newapp`; when it was not, Telegram answers
+ * "bot application not found" and every invite link is dead. The bot-only form
+ * has no such failure mode, because it never names an app.
+ *
+ * Returns null when there is nothing valid to link to.
  */
 export function buildInviteLink(
   code: string,
   botUsername: string | null | undefined,
-  appShortName?: string | null,
 ): string | null {
   const bot = botUsername?.trim().replace(/^@/, "");
   const cleanCode = code?.trim().toUpperCase();
   if (!bot || !cleanCode) return null;
 
-  const startParam = `${REFERRAL_START_PREFIX}${cleanCode}`;
-  const app = appShortName?.trim();
+  /* A code that `parseReferralCode` would reject yields a link whose
+     `start_param` is silently ignored, so refuse to build one. */
+  if (cleanCode.length !== REFERRAL_CODE_LENGTH || !/^[A-Z0-9]+$/.test(cleanCode)) {
+    return null;
+  }
 
-  return app
-    ? `https://t.me/${bot}/${app}?startapp=${startParam}`
-    : `https://t.me/${bot}?startapp=${startParam}`;
+  return `https://t.me/${bot}?startapp=${REFERRAL_START_PREFIX}${cleanCode}`;
 }
 
 /** `AB12CD34` -> `AB12 CD34`, for easier reading aloud. */

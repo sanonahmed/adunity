@@ -18,11 +18,9 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
 
-      # BotFather Mini App settings, inlined at build time. The bot username is
-      # required to build invite links; the short name is optional.
+      # BotFather bot username, inlined at build time. Required for invite
+      # links: https://t.me/<bot>?startapp=ref_<code>
       - key: NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-        sync: false
-      - key: NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME
         sync: false
 
       # Referral records live in SQLite. The default `.data/adunity.sqlite` is

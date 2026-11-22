@@ -25,14 +25,11 @@ import { isTabId, type TabId } from "./tabs";
 import { TopBar } from "./top-bar";
 
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
-const APP_SHORT_NAME = process.env.NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME;
-/* A bot's main Mini App opens directly from `t.me/<bot>?startapp`, so the short
-   name only selects one of several Mini Apps and is otherwise optional. */
-const TELEGRAM_APP_URL = BOT_USERNAME
-  ? APP_SHORT_NAME
-    ? `https://t.me/${BOT_USERNAME}/${APP_SHORT_NAME}`
-    : `https://t.me/${BOT_USERNAME}?startapp`
-  : null;
+/* The bot's main Mini App (menu button) is what `t.me/<bot>?startapp` launches.
+   A `<bot>/<short_name>` link is never built: a short name that was not
+   registered with BotFather `/newapp` makes Telegram answer "bot application
+   not found" instead of opening the app. */
+const TELEGRAM_APP_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?startapp` : null;
 
 /* Avoid useLayoutEffect's server warning while resolving Telegram/deep-link
    state before the first browser paint. */

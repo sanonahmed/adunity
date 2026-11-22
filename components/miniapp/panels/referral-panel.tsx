@@ -140,11 +140,16 @@ export function ReferralPanel({ active, initData, referral }: ReferralPanelProps
                     {copied ? "Copied" : "Copy link"}
                   </Button>
                 </div>
+                <p className="mt-3 text-[10.5px] leading-relaxed text-muted-foreground">
+                  This link opens AdUnity from the bot&apos;s menu button. If Telegram
+                  answers &quot;bot application not found&quot;, point the bot&apos;s menu
+                  button at this Mini App in @BotFather with /setmenubutton.
+                </p>
               </>
             ) : (
               <p className="mt-4 text-[11.5px] leading-relaxed text-muted-foreground">
-                Invite links are not configured yet. The app owner must set the
-                Telegram bot username; the Mini App short name is optional.
+                Invite links are not configured yet. The app owner must set
+                NEXT_PUBLIC_TELEGRAM_BOT_USERNAME for this deployment.
               </p>
             )}
           </>
