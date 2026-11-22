@@ -5,7 +5,7 @@ import "./globals.css";
 
 const TITLE = "AdUnity — Telegram Mini App";
 const DESCRIPTION =
-  "AdUnity is a Telegram Mini App for sharing invites, following verified referrals, and earning referral points.";
+  "AdUnity is a Telegram Mini App for sharing invites and earning a 25% share of verified referral ad revenue.";
 
 export const metadata: Metadata = {
   title: TITLE,

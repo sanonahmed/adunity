@@ -4,10 +4,11 @@ import {
   CalendarDays, CircleDollarSign, Clock3, Coins, History, LockKeyhole,
   UserRound, WalletCards, type LucideIcon,
 } from "lucide-react";
-import type { ReferralSummary } from "@/lib/referral";
+import { REFERRAL_COMMISSION_PERCENT, type ReferralSummary } from "@/lib/referral";
 import type { TelegramUser } from "@/lib/telegram";
 
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+const bdtFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type ProfilePanelProps = {
   active: boolean;
@@ -16,7 +17,7 @@ type ProfilePanelProps = {
   loading: boolean;
 };
 
-function points(value: number): string {
+function count(value: number): string {
   return numberFormat.format(value);
 }
 
@@ -45,10 +46,10 @@ function StatCard({
   );
 }
 
-/** Telegram identity and a transparent, points-only rewards overview. */
+/** Telegram identity and a BDT referral earnings overview. */
 export function ProfilePanel({ active, user, referral, loading }: ProfilePanelProps) {
   const name = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : "Telegram profile";
-  const todayPoints = referral ? referral.stats.today * referral.rewards.pointsPerInvite : null;
+  const earnings = referral?.rewards.earnedBdt ?? null;
 
   return (
     <section id="panel-profile" role="tabpanel" aria-labelledby="tab-profile" tabIndex={0} hidden={!active} className="panel-enter space-y-3 pt-9 outline-none">
@@ -86,18 +87,17 @@ export function ProfilePanel({ active, user, referral, loading }: ProfilePanelPr
 
       <div className="glass rise rounded-3xl p-5">
         <div className="flex items-start justify-between gap-3">
-          <div><p className="eyebrow">Reward points</p><h2 className="mt-1.5 text-[16px] font-semibold tracking-[-0.02em]">Your earning overview</h2></div>
+          <div><p className="eyebrow">Referral earnings</p><h2 className="mt-1.5 text-[16px] font-semibold tracking-[-0.02em]">Your BDT share</h2></div>
           <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-gold/15 bg-gold-soft text-gold"><Coins className="size-4" aria-hidden="true" /></span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <StatCard icon={CalendarDays} label="Today" value={todayPoints === null ? "—" : `${points(todayPoints)} pts`} detail={referral ? `${points(referral.stats.today)} verified ${referral.stats.today === 1 ? "invite" : "invites"}` : "Verified invites today"} />
-
-          <StatCard icon={CircleDollarSign} label="Total earned" value={referral ? `${points(referral.rewards.points)} pts` : loading ? "…" : "—"} detail="Invite points + milestone bonuses" featured />
-          <StatCard icon={UserRound} label="Referred earnings" value={referral ? `${points(referral.rewards.invitePoints)} pts` : loading ? "…" : "—"} detail={referral ? `${points(referral.invitedCount)} verified referred ${referral.invitedCount === 1 ? "user" : "users"}` : "From verified referrals"} />
-          <StatCard icon={WalletCards} label="Milestone bonuses" value={referral ? `${points(referral.rewards.bonusPoints)} pts` : loading ? "…" : "—"} detail="Bonus points from invite milestones" />
+          <StatCard icon={CircleDollarSign} label="Earned" value={earnings === null ? "BDT —" : `${bdtFormat.format(earnings)} BDT`} detail="From referred users’ ad revenue" featured />
+          <StatCard icon={WalletCards} label="Commission" value={`${referral?.rewards.commissionPercent ?? 25}%`} detail="Share of referred ad revenue" />
+          <StatCard icon={UserRound} label="Verified referrals" value={referral ? count(referral.invitedCount) : loading ? "…" : "—"} detail="Users attributed to your link" />
+          <StatCard icon={CalendarDays} label="Invites today" value={referral ? count(referral.stats.today) : loading ? "…" : "—"} detail="Verified sign-ups today" />
         </div>
         <p className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-muted-foreground">
-          Points are AdUnity referral rewards, not cash. They currently have no cash value and cannot be withdrawn.
+          No instant invite bonus: your {REFERRAL_COMMISSION_PERCENT}% share accrues only as referred users generate ad revenue. BDT earnings appear when revenue tracking is connected.
         </p>
       </div>
 
@@ -110,7 +110,7 @@ export function ProfilePanel({ active, user, referral, loading }: ProfilePanelPr
             <p className="eyebrow">Withdrawals</p>
             <h2 className="mt-1.5 text-[15px] font-semibold">Cash withdrawals aren’t available</h2>
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              AdUnity doesn’t currently have a cash balance or payout service. Referral points aren’t redeemable for money.
+              Ad revenue tracking and cash payouts aren’t connected yet. Referral earnings are calculated in BDT when referred-user revenue is available.
             </p>
           </div>
         </div>

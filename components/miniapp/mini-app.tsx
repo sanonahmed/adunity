@@ -22,6 +22,7 @@ import { useReferral } from "./use-referral";
 import { ReferralPanel } from "./panels/referral-panel";
 import { ProfilePanel } from "./panels/profile-panel";
 import { TabBar } from "./tab-bar";
+import { REFERRAL_COMMISSION_PERCENT } from "@/lib/referral";
 import { isTabId, type TabId } from "./tabs";
 import { TopBar } from "./top-bar";
 
@@ -225,8 +226,8 @@ export function MiniApp() {
                     body: referral.summary
                       ? `${referral.summary.invitedCount} verified ${
                           referral.summary.invitedCount === 1 ? "invite" : "invites"
-                        } · ${referral.summary.rewards.points} points earned.`
-                      : "Your invites, activity and reward points are in the Referral tab.",
+                        } · ${referral.summary.rewards.commissionPercent}% referral share of their ad revenue.`
+                      : `Your invites and ${REFERRAL_COMMISSION_PERCENT}% share of referred users’ ad revenue are in the Referral tab.`,
                   },
                 ].map((feature) => {
                   const Icon = feature.icon;

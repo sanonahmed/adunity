@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import type { TelegramUser } from "./telegram";
 import {
-  computeRewards,
+  computeReferralEarnings,
   parseReferralCode,
   REFERRAL_CODE_LENGTH,
   REFERRAL_RECENT_LIMIT,
@@ -126,7 +126,8 @@ async function readSummary(
       rank,
       referrers,
     },
-    rewards: computeRewards(invitedCount),
+    // Referral attribution exists, but the app does not yet ingest ad revenue.
+    rewards: computeReferralEarnings(null),
   };
 }
 

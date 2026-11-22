@@ -9,8 +9,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  formatReferralCode, REFERRAL_MILESTONES, REFERRAL_POINT_VALUE_USD,
-  type ReferralActivityDay, type ReferralRewards,
+  formatReferralCode,
+  type ReferralActivityDay,
+  type ReferralRewards,
 } from "@/lib/referral";
 import { shareLink } from "@/lib/telegram";
 import type { ReferralState } from "../use-referral";
@@ -23,7 +24,7 @@ type ReferralPanelProps = {
 };
 
 const countFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
-const usdFormat = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
+const bdtFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function formatCount(value: number): string {
   return countFormat.format(Number.isFinite(value) ? value : 0);
@@ -103,63 +104,31 @@ function ActivityChart({ days }: { days: ReferralActivityDay[] }) {
 }
 
 
-/** Points balance, milestone progress and the reward tier ladder. */
-function RewardsCard({ rewards, invitedCount }: { rewards: ReferralRewards; invitedCount: number }) {
-  const next = rewards.nextMilestone;
+/** Referral commission on actual ad revenue, displayed as BDT. */
+function RewardsCard({ rewards }: { rewards: ReferralRewards }) {
   return (
     <div className="glass rise-late rounded-3xl p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="eyebrow">Earnings</p>
+          <p className="eyebrow">Referral earnings</p>
           <p className="mt-2 text-[30px] font-semibold leading-none tracking-[-0.035em]">
-            {rewards.estimatedUsd !== null ? usdFormat.format(rewards.estimatedUsd) : `${formatCount(rewards.points)} pts`}
+            {rewards.earnedBdt === null ? "BDT —" : `${bdtFormat.format(rewards.earnedBdt)} BDT`}
           </p>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            {formatCount(rewards.points)} points · {formatCount(rewards.pointsPerInvite)} per invite
-            {rewards.bonusPoints > 0 ? ` · +${formatCount(rewards.bonusPoints)} bonus` : ""}
+            {rewards.commissionPercent}% share of referred users’ ad revenue
           </p>
           <p className="mt-1.5 text-[9.5px] leading-relaxed text-muted-foreground">
-            Points are earned from verified invites. They have no cash value.
+            Earnings are calculated as referred users generate ad revenue. Invites alone do not earn an instant bonus.
           </p>
         </div>
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl border border-gold/20 bg-gold-soft text-gold">
           <Coins className="size-[18px]" aria-hidden="true" />
         </span>
       </div>
-
-      {next ? (
-        <>
-          <div className="mt-5 flex items-baseline justify-between gap-3">
-            <p className="text-[11.5px] font-medium text-foreground/80">
-              {next.remaining} more {next.remaining === 1 ? "invite" : "invites"} to unlock +{formatCount(next.bonus)}
-            </p>
-            <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">{formatCount(invitedCount)}/{formatCount(next.target)}</span>
-          </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.07]" role="progressbar" aria-label="Progress to the next reward milestone" aria-valuemin={0} aria-valuemax={next.target} aria-valuenow={invitedCount}>
-            <div className="h-full rounded-full bg-[linear-gradient(90deg,#bf9f6b,#f4e6c6)] transition-[width] duration-700" style={{ width: `${Math.max(2, Math.round(rewards.progress * 100))}%` }} />
-          </div>
-        </>
-      ) : (
-        <p className="mt-5 inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-gold">
-          <Trophy className="size-3.5" aria-hidden="true" />Every milestone unlocked
-        </p>
-      )}
-
-      <ol className="mt-5 grid grid-cols-5 gap-1.5">
-        {REFERRAL_MILESTONES.map((milestone) => {
-          const reached = invitedCount >= milestone.target;
-          return (
-            <li key={milestone.target} className={`rounded-xl border px-1 py-2 text-center ${reached ? "border-gold/25 bg-gold-soft text-gold" : "border-white/8 bg-white/[0.02] text-muted-foreground"}`} title={`${milestone.target} invites${reached ? " reached" : ""} · +${formatCount(milestone.bonus)} points`}>
-              <span className="block text-[11px] font-semibold leading-none">{formatCount(milestone.target)}</span>
-              <span className="mt-1 block text-[9px] leading-none">{reached ? "unlocked" : `+${formatCount(milestone.bonus)}`}</span>
-            </li>
-          );
-        })}
-      </ol>
       <p className="mt-4 border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-muted-foreground">
-        {REFERRAL_POINT_VALUE_USD > 0
-          ? `Estimated at ${usdFormat.format(REFERRAL_POINT_VALUE_USD)} per point, based on verified invites.`
-          : "Points are earned from verified invites and have no cash value."}
+        {rewards.earnedBdt === null
+          ? "Ad revenue tracking is not connected yet, so referral earnings are unavailable."
+          : `Your balance includes ${rewards.commissionPercent}% of the ad revenue generated by your verified referrals.`}
       </p>
     </div>
   );
@@ -317,7 +286,7 @@ export function ReferralPanel({ active, initData, referral }: ReferralPanelProps
             </p>
           </div>
 
-          <RewardsCard rewards={summary.rewards} invitedCount={summary.invitedCount} />
+          <RewardsCard rewards={summary.rewards} />
 
           <div className="glass rise-late rounded-3xl p-5">
             <div className="flex items-center justify-between gap-3">
