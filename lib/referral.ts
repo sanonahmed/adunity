@@ -14,8 +14,8 @@ export const REFERRAL_START_PREFIX = "ref_";
 /** 8 characters from a 31-symbol alphabet — unambiguous, ~2^40 space. */
 export const REFERRAL_CODE_LENGTH = 8;
 
-/** How many referred users the dashboard lists. */
-export const REFERRAL_RECENT_LIMIT = 8;
+/** How many most recently referred users the dashboard lists. */
+export const REFERRAL_RECENT_LIMIT = 10;
 
 /** Width of the activity chart, in calendar days (today included). */
 export const REFERRAL_ACTIVITY_DAYS = 14;
@@ -33,6 +33,10 @@ export type ReferralRecord = {
   /** 1-based join order for this referrer: the oldest invite is 1. */
   index: number;
   joinedAt: string;
+  /** Display name from the referred user's verified Telegram profile. */
+  name: string;
+  username: string | null;
+  photoUrl: string | null;
 };
 
 export type ReferralActivityDay = {

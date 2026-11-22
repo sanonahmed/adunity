@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   CalendarDays, Check, Coins, Copy, Flame, Gift, LoaderCircle, Medal,
-  RefreshCw, Share2, Target, TrendingUp, Trophy, UserCheck, Users,
+  RefreshCw, Share2, Target, TrendingUp, Trophy, UserRound, Users,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -346,12 +346,19 @@ export function ReferralPanel({ active, initData, referral }: ReferralPanelProps
               <ul className="mt-3 divide-y divide-white/[0.06]">
                 {summary.recent.map((record) => (
                   <li key={`${record.index}-${record.joinedAt}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300">
-                      <UserCheck className="size-3.5" aria-hidden="true" />
+                    <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.04] text-muted-foreground">
+                      {record.photoUrl ? (
+                        // Telegram profile photos are supplied by the signed user payload.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={record.photoUrl} alt={`${record.name}'s Telegram profile photo`} className="size-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <UserRound className="size-4" aria-hidden="true" />
+                      )}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12px] font-medium">Invite #{formatCount(record.index)}</p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      <p className="truncate text-[12px] font-medium">{record.name}</p>
+                      <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                        {record.username ? `@${record.username} · ` : ""}
                         <time dateTime={record.joinedAt}>{formatRelative(record.joinedAt)}</time>
                       </p>
                     </div>

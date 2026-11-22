@@ -126,7 +126,9 @@ everything else is `401` (`bad_signature`, `expired`, `missing_hash`, `malformed
    the person opened the app from the menu button earlier. `referred_telegram_id` is
    the primary key, so replays and later links cannot change the referrer.
 4. The response holds that caller's code, invite count, activity buckets, referral
-   commission rate and recent sign-up timestamps; invitee names are never stored or returned.
+   commission rate and the 10 latest referred users' verified Telegram display names,
+   optional usernames and profile-photo URLs. Telegram IDs are not returned to the referrer.
+   Display fields are refreshed from each user's signed Telegram launch payload.
 
 ### Referral commission
 

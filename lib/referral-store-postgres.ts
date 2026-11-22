@@ -16,8 +16,16 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
     telegram_id BIGINT PRIMARY KEY,
     referral_code TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    username TEXT,
+    photo_url TEXT
   );
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT;
   CREATE TABLE IF NOT EXISTS referrals (
     referred_telegram_id BIGINT PRIMARY KEY,
     referrer_telegram_id BIGINT NOT NULL REFERENCES users (telegram_id),
@@ -32,7 +40,13 @@ type DbGlobal = typeof globalThis & {
   __adunityReferralSchema?: Promise<void>;
 };
 type UserRow = { telegram_id: string; referral_code: string; created_at: string };
-type InviteRow = { created_at: string };
+type InviteRow = {
+  created_at: string;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  photo_url: string | null;
+};
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL?.trim();
@@ -62,6 +76,21 @@ async function ensureSchema(pool: Pool): Promise<void> {
     });
   }
   await scope.__adunityReferralSchema;
+}
+
+function cleanProfileText(value: string | undefined, maxLength: number): string | null {
+  const cleaned = value?.trim().slice(0, maxLength);
+  return cleaned || null;
+}
+
+function cleanProfilePhotoUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function randomCode(): string {
@@ -105,16 +134,27 @@ async function readSummary(
   const user = users.rows[0];
   if (!user) return null;
 
-  const invites = await client.query<InviteRow>(
-    `SELECT created_at FROM referrals WHERE referrer_telegram_id = $1
-     ORDER BY created_at DESC, referred_telegram_id DESC`,
+  const activityRows = await client.query<{ created_at: string }>(
+    "SELECT created_at FROM referrals WHERE referrer_telegram_id = $1 ORDER BY created_at DESC",
     [telegramId],
   );
-  const rows = invites.rows;
-  const invitedCount = rows.length;
-  const recent: ReferralRecord[] = rows
-    .slice(0, REFERRAL_RECENT_LIMIT)
-    .map((row, index) => ({ index: invitedCount - index, joinedAt: row.created_at }));
+  const invitedCount = activityRows.rows.length;
+  const invites = await client.query<InviteRow>(
+    `SELECT r.created_at, u.first_name, u.last_name, u.username, u.photo_url
+     FROM referrals r
+     JOIN users u ON u.telegram_id = r.referred_telegram_id
+     WHERE r.referrer_telegram_id = $1
+     ORDER BY r.created_at DESC, r.referred_telegram_id DESC
+     LIMIT $2`,
+    [telegramId, REFERRAL_RECENT_LIMIT],
+  );
+  const recent: ReferralRecord[] = invites.rows.map((row, index) => ({
+    index: invitedCount - index,
+    joinedAt: row.created_at,
+    name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.username || "Telegram user",
+    username: row.username,
+    photoUrl: row.photo_url,
+  }));
   const { rank, referrers } = await readRank(client, invitedCount);
   return {
     code: user.referral_code,
@@ -122,7 +162,7 @@ async function readSummary(
     joinedAt: user.created_at,
     recent,
     stats: {
-      ...summariseActivity(rows.map((row) => row.created_at), new Date()),
+      ...summariseActivity(activityRows.rows.map((row) => row.created_at), new Date()),
       rank,
       referrers,
     },
@@ -167,6 +207,18 @@ export async function recordVisit(
         if (concurrent.rowCount === 0) throw new Error("referral_code_collision");
       } else created = true;
     }
+    await client.query(
+      `UPDATE users
+       SET first_name = $2, last_name = $3, username = $4, photo_url = $5
+       WHERE telegram_id = $1`,
+      [
+        user.id,
+        cleanProfileText(user.first_name, 256) ?? "Telegram user",
+        cleanProfileText(user.last_name, 256),
+        cleanProfileText(user.username, 64),
+        cleanProfilePhotoUrl(user.photo_url),
+      ],
+    );
     const code = parseReferralCode(startParam);
     if (code) {
       const referrer = await client.query<{ telegram_id: string }>("SELECT telegram_id FROM users WHERE referral_code = $1", [code]);
