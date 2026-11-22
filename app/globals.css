@@ -1,0 +1,353 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   AdUnity — design tokens
+   Ink black canvas + champagne gold accent. Dark-only by design,
+   so the palette lives on :root and there is no light variant.
+   ═══════════════════════════════════════════════════════════════ */
+@theme {
+  /* shadcn/ui contract: every primitive reads these names */
+  --color-background: #06070b;
+  --color-foreground: #f6f3ec;
+  --color-card: #0b0e15;
+  --color-card-foreground: #f6f3ec;
+  --color-popover: #0b0e15;
+  --color-popover-foreground: #f6f3ec;
+  --color-primary: #e6d2a8;
+  --color-primary-foreground: #16110a;
+  --color-secondary: #141821;
+  --color-secondary-foreground: #ece7dd;
+  --color-muted: #141821;
+  --color-muted-foreground: #99a1b0;
+  --color-accent: #1a1f2a;
+  --color-accent-foreground: #f6f3ec;
+  --color-destructive: #f2677a;
+  --color-destructive-foreground: #1b0a0e;
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-input: rgba(255, 255, 255, 0.12);
+  --color-ring: rgba(230, 210, 168, 0.5);
+
+  /* brand scale */
+  --color-ink: #06070b;
+  --color-ink-raised: #0b0e15;
+  --color-gold: #e6d2a8;
+  --color-gold-bright: #f4e6c6;
+  --color-gold-deep: #bf9f6b;
+  --color-gold-soft: rgba(230, 210, 168, 0.14);
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.125rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.875rem;
+  --radius-3xl: 2.25rem;
+
+  --shadow-lift: 0 28px 70px -34px rgba(0, 0, 0, 0.95);
+  --shadow-gold: 0 18px 46px -24px rgba(230, 210, 168, 0.55);
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: rgba(230, 210, 168, 0.28);
+    color: #fffaf0;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(230, 210, 168, 0.65);
+    outline-offset: 2px;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}
+
+/* Every custom class lives in the components layer so Tailwind
+   utilities (rounded-*, bg-*, text-*) can always win when a caller
+   needs to override one. */
+@layer components {
+
+/* ── ambient canvas ─────────────────────────────────────── */
+.app-canvas {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+}
+
+.aurora {
+  position: fixed;
+  inset: -18% -12%;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(90px);
+}
+
+.aurora::before {
+  top: -16vmax;
+  left: -12vmax;
+  width: 62vmax;
+  height: 62vmax;
+  background: radial-gradient(
+    circle at 32% 32%,
+    rgba(230, 210, 168, 0.22),
+    transparent 62%
+  );
+  animation: drift-a 26s ease-in-out infinite alternate;
+}
+
+.aurora::after {
+  right: -16vmax;
+  bottom: -12vmax;
+  width: 56vmax;
+  height: 56vmax;
+  background: radial-gradient(
+    circle at 60% 40%,
+    rgba(92, 124, 255, 0.16),
+    transparent 62%
+  );
+  animation: drift-b 34s ease-in-out infinite alternate;
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ── surfaces ───────────────────────────────────────────── */
+.glass {
+  position: relative;
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.012)
+  );
+  box-shadow:
+    0 26px 64px -38px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.glass-strong {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 18, 26, 0.88),
+    rgba(7, 8, 13, 0.94)
+  );
+  box-shadow:
+    0 30px 60px -30px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  backdrop-filter: blur(26px) saturate(140%);
+}
+
+.hairline {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.13),
+    transparent
+  );
+}
+
+/* ── typography ─────────────────────────────────────────── */
+.gold-text {
+  background-image: linear-gradient(
+    180deg,
+    #f9f0da 0%,
+    #e6d2a8 44%,
+    #b8965e 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+.display {
+  font-size: clamp(2.9rem, 13vw, 4.1rem);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+}
+
+/* ── motion ─────────────────────────────────────────────────
+   Entrance animations only ever set opacity/transform inside
+   @keyframes, never as a base style, so a suppressed animation
+   (reduced-motion, frozen renderer) can never hide content.
+   ───────────────────────────────────────────────────────── */
+.rise {
+  animation: rise-in 0.7s var(--ease-out-soft) both;
+}
+
+.rise-late {
+  animation: rise-in 0.7s var(--ease-out-soft) 0.09s both;
+}
+
+.panel-enter {
+  animation: panel-in 0.45s var(--ease-out-soft) both;
+}
+
+.live-dot {
+  animation: live-pulse 2.6s ease-in-out infinite;
+}
+
+.tab-indicator {
+  transition: transform 0.42s var(--ease-out-soft);
+  will-change: transform;
+}
+
+.tap {
+  transition:
+    transform 0.18s var(--ease-out-soft),
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.tap:active {
+  transform: scale(0.975);
+}
+
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+}
+
+} /* end @layer components */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes drift-a {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(6vmax, 4vmax, 0) scale(1.08);
+  }
+}
+
+@keyframes drift-b {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.06);
+  }
+  to {
+    transform: translate3d(-5vmax, -3vmax, 0) scale(1);
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(126, 231, 168, 0.45);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 4px rgba(126, 231, 168, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
