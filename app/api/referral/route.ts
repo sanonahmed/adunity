@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { recordVisit } from "@/lib/referral-store";
+import { recordVisit } from "@/lib/referral-store-postgres";
 import type { ReferralApiFailure, ReferralApiResponse } from "@/lib/referral";
 import { readInitData, validateInitData } from "@/lib/telegram-auth";
 
-/** SQLite + crypto + env access all require the Node runtime. */
+/** PostgreSQL + crypto + env access all require the Node runtime. */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -56,12 +56,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { summary } = recordVisit(verified.user, verified.startParam);
+    const { summary } = await recordVisit(verified.user, verified.startParam);
     return NextResponse.json(
       { ok: true, referral: summary } satisfies ReferralApiResponse,
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    if (error instanceof Error && error.message === "database_not_configured") {
+      return fail("server_not_configured", 503);
+    }
     console.error("[referral] store failure", error);
     return fail("store_error", 500);
   }

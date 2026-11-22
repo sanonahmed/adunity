@@ -4,7 +4,7 @@ A single responsive **AdUnity** app served by the website and opened in Telegram
 Ink-black canvas, champagne-gold accent, four shared sections: **Home · Ads · Referral · Profile**.
 The website URL and Telegram Mini App use the same frontend build and hash-based tab routes.
 
-This milestone includes the Mini App shell, design system, Telegram identity layer, and a server-verified referral flow backed by SQLite. Invite codes, first-touch attribution and a live referral dashboard — invite counts, reward points, activity and rank — are all derived from the stored rows. There is no payout ledger yet, so no money moves.
+This milestone includes the Mini App shell, design system, Telegram identity layer, and a server-verified referral flow backed by Neon PostgreSQL. Invite codes, first-touch attribution and a live referral dashboard — invite counts, reward points, activity and rank — are all derived from durable database rows. There is no payout ledger yet, so no money moves.
 
 ## Stack
 
@@ -16,11 +16,11 @@ This milestone includes the Mini App shell, design system, Telegram identity lay
 | Telegram | Telegram WebApp SDK, hand-typed wrapper (no global type package) |
 | Backend | Next.js Route Handlers (`/api/auth`, `/api/referral`) |
 | Auth | Server-side `initData` HMAC-SHA256 validation |
-| Database | Node.js built-in SQLite (`node:sqlite`) for referral records; configure `ADUNITY_DB_PATH` to a persistent writable disk |
+| Database | Neon PostgreSQL (`pg`) for durable referral records; configure the server-only `DATABASE_URL` |
 
 ## Run it
 
-Requires Node.js >= 22.13 (for the built-in `node:sqlite` database). Referral records live in `.data/adunity.sqlite` by default; use `ADUNITY_DB_PATH` to point at a persistent writable file.
+Requires Node.js >= 22.13 and a Neon PostgreSQL database. The referral API uses the server-only `DATABASE_URL`; it never stores production records on the app filesystem. Node 22.13+ is also used by the optional SQLite import utility.
 
 ```bash
 npm install
@@ -30,11 +30,11 @@ npm run build      # production build
 npm run start      # serve the build
 ```
 
-Copy `.env.example` to `.env.local` before deploying. Set `TELEGRAM_BOT_TOKEN`
-server-side for `POST /api/auth` and `/api/referral`; it must be the current token
-from BotFather and must never use a `NEXT_PUBLIC_` prefix. Set `ADUNITY_DB_PATH` to a
-persistent writable SQLite file in production (otherwise the default `.data` path is
-used). After creating the bot with BotFather, set
+Copy `.env.example` to `.env.local` for local development. Create a Neon project and set
+`DATABASE_URL` to its pooled connection string (Neon Console → project → **Connect**);
+keep it server-only, never `NEXT_PUBLIC_`. Set `TELEGRAM_BOT_TOKEN` server-side for
+`POST /api/auth` and `/api/referral`; it must be the current token from BotFather.
+The app creates its referral tables on first use. After creating the bot with BotFather, set
 `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (required for invite links); the browser-only
 **Open in Telegram** link appears as soon as the username is set (hidden inside
 Telegram). Rebuild after changing `NEXT_PUBLIC_*` values.
@@ -60,7 +60,7 @@ components/
   ui/                     button, badge, card (shadcn conventions)
 lib/
   referral.ts             shared referral code/link helpers
-  referral-store.ts       SQLite schema, code generation, signed attribution
+  referral-store-postgres.ts  Neon schema, code generation, signed attribution
   telegram.ts             typed SDK subset, version gating, init, haptics, share
   telegram-auth.ts        HMAC signature validation (server only)
   utils.ts                cn(), currency(), compactNumber(), initials()
@@ -168,9 +168,11 @@ Referral data is unavailable in a plain browser because no verified Telegram acc
 3. Set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (without `@`), then rebuild and deploy. The
    site's **Open in Telegram** link and every invite link
    (`https://t.me/<bot>?startapp=ref_<code>`) appear as soon as it is set.
-4. Set `TELEGRAM_BOT_TOKEN` as a server-only host secret to enable `POST /api/auth` and
-   `/api/referral`. Set `ADUNITY_DB_PATH` to a persistent writable SQLite file;
-   ephemeral serverless filesystems cannot persist referral records.
+4. In Neon, create a project and copy the **pooled** connection string from **Connect**.
+   Add it to your host as the server-only `DATABASE_URL` secret (Render's `render.yaml`
+   prompts for this value). Also set `TELEGRAM_BOT_TOKEN` as a server-only secret.
+   Never prefix either secret with `NEXT_PUBLIC_`. The app creates its tables in Neon
+   automatically; referral data is no longer stored on Render's ephemeral filesystem.
 
 The same frontend runs in a normal browser and Telegram's WebView. Telegram-specific
 capabilities (native Back button, haptics, and Telegram-provided profile identity) only
@@ -189,11 +191,32 @@ Telegram Mini App; use an HTTPS deployment or tunnel for Telegram testing.
 ## Production readiness
 
 `npm run build` produces the same optimized Next.js app for the website and Telegram.
-For a Telegram launch, deploy it to HTTPS, set the BotFather menu button to that URL,
-and provide `TELEGRAM_BOT_TOKEN` as a fresh server-only BotFather secret. The `/api/auth` route validates Telegram `initData`; `/api/referral` additionally persists verified invite codes and first-touch attribution in SQLite. Set `ADUNITY_DB_PATH` to a durable writable volume in production: ephemeral serverless filesystems lose referral records after restart. Invitees launch with `?startapp=ref_<code>`. Reward points are computed from verified invites; campaigns and cash payouts still need campaign data and a payout ledger.
+For production, set `DATABASE_URL` to the pooled Neon connection string and set
+`TELEGRAM_BOT_TOKEN` as a server-only secret. The `/api/auth` route validates Telegram
+`initData`; `/api/referral` persists verified invite codes and first-touch attribution in
+Neon PostgreSQL, so app redeploys/restarts do not erase records. Invitees launch with
+`?startapp=ref_<code>`. Reward points are computed from verified invites; campaigns and
+cash payouts still need campaign data and a payout ledger.
+
+### Move existing SQLite data and protect future data
+
+Before the cutover, take a copy of any surviving SQLite database (include its `-wal`
+and `-shm` files if the application is running). Then set `DATABASE_URL` and
+`SQLITE_FILE` locally and run `npm run migrate:sqlite`. The importer opens SQLite read-only,
+checks for conflicting codes/attributions, and imports users and invite relationships in
+one Neon transaction; it is safe to re-run when the same rows are already present. Verify
+the reported counts and the live referral dashboard before removing any old database
+copy. A SQLite file lost by an earlier ephemeral-filesystem redeploy cannot be recovered
+by this migration.
+
+Neon retains database records independently of app instances, but no provider can
+promise it will never restart or that data can never be lost. Configure Neon backups/
+point-in-time recovery and retention for your plan, keep an independent backup, and
+restrict access to `DATABASE_URL`. Free plans may suspend idle compute, so the first
+request after idling can be slower; suspension/restarts do not delete stored data.
 
 ## Not built yet
 
-- Production-grade Postgres migration and referral fraud checks; the current SQLite store needs a persistent volume
+- Referral fraud checks and payout ledger; referral storage now uses Neon PostgreSQL
 - Campaign data and a payout ledger — reward points are computed, but nothing is paid out yet
 - Localisation / `@telegram-apps/telegram-ui` migration if native chrome is preferred

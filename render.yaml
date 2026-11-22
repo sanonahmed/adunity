@@ -6,8 +6,8 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
-      # `node:sqlite` (the referral store) is built into Node from 22.13 without
-      # a flag; Node 20 has no such module, so /api/referral cannot load there.
+      # Keep Render on the project's supported Node version. The referral API
+      # uses Neon PostgreSQL; node:sqlite is only used by the local one-time importer.
       - key: NODE_VERSION
         value: 22.13.0
       - key: HOSTNAME
@@ -23,15 +23,7 @@ services:
       - key: NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
         sync: false
 
-      # Referral records live in SQLite. The default `.data/adunity.sqlite` is
-      # on the instance filesystem, which Render discards on every deploy and
-      # restart, so invite history disappears. To keep it, attach a persistent
-      # disk (paid plans only) and point ADUNITY_DB_PATH at the mount:
-      #
-      #   disk:
-      #     name: adunity-data
-      #     mountPath: /var/data
-      #     sizeGB: 1
-      #
-      # - key: ADUNITY_DB_PATH
-      #   value: /var/data/adunity.sqlite
+      # Server-only Neon PostgreSQL connection string. Use the pooled URL from
+      # Neon Console -> project -> Connect. Never add a NEXT_PUBLIC_ prefix.
+      - key: DATABASE_URL
+        sync: false
