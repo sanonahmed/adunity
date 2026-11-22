@@ -37,6 +37,13 @@ export type InitDataError = { ok: false; reason: InitDataFailure };
 
 export type InitDataResult = InitDataOk | InitDataError;
 
+/** Safely extracts the Telegram WebApp.initData field from an untrusted body. */
+export function readInitData(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const { initData } = body as { initData?: unknown };
+  return typeof initData === "string" && initData.length > 0 ? initData : null;
+}
+
 function constantTimeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   const left = Buffer.from(a, "hex");

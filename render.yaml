@@ -6,7 +6,34 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
+      # `node:sqlite` (the referral store) is built into Node from 22.13 without
+      # a flag; Node 20 has no such module, so /api/referral cannot load there.
       - key: NODE_VERSION
-        value: 20
+        value: 22.13.0
       - key: HOSTNAME
         value: 0.0.0.0
+
+      # Server-only BotFather token used to verify Telegram initData. Set it in
+      # the Render dashboard; without it /api/auth and /api/referral fail closed.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+
+      # BotFather Mini App settings, inlined at build time. The bot username is
+      # required to build invite links; the short name is optional.
+      - key: NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME
+        sync: false
+
+      # Referral records live in SQLite. The default `.data/adunity.sqlite` is
+      # on the instance filesystem, which Render discards on every deploy and
+      # restart, so invite history disappears. To keep it, attach a persistent
+      # disk (paid plans only) and point ADUNITY_DB_PATH at the mount:
+      #
+      #   disk:
+      #     name: adunity-data
+      #     mountPath: /var/data
+      #     sizeGB: 1
+      #
+      # - key: ADUNITY_DB_PATH
+      #   value: /var/data/adunity.sqlite

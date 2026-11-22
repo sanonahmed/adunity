@@ -18,6 +18,7 @@ import {
   isTelegramClient,
   type TelegramUser,
 } from "@/lib/telegram";
+import { useReferral } from "./use-referral";
 import { ReferralPanel } from "./panels/referral-panel";
 import { TabBar } from "./tab-bar";
 import { isTabId, type TabId } from "./tabs";
@@ -25,10 +26,13 @@ import { TopBar } from "./top-bar";
 
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
 const APP_SHORT_NAME = process.env.NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME;
-const TELEGRAM_APP_URL =
-  BOT_USERNAME && APP_SHORT_NAME
+/* A bot's main Mini App opens directly from `t.me/<bot>?startapp`, so the short
+   name only selects one of several Mini Apps and is otherwise optional. */
+const TELEGRAM_APP_URL = BOT_USERNAME
+  ? APP_SHORT_NAME
     ? `https://t.me/${BOT_USERNAME}/${APP_SHORT_NAME}`
-    : null;
+    : `https://t.me/${BOT_USERNAME}?startapp`
+  : null;
 
 /* Avoid useLayoutEffect's server warning while resolving Telegram/deep-link
    state before the first browser paint. */
@@ -64,6 +68,9 @@ export function MiniApp() {
   const [user, setUser] = useState<TelegramUser | null>(null);
   /* Server HTML cannot know this; resolved before the first paint below. */
   const [inTelegram, setInTelegram] = useState(false);
+  /* Signed launch payload; empty until the browser-only check below runs. */
+  const [initData, setInitData] = useState("");
+  const referral = useReferral(initData);
   const tabHistory = useRef<TabId[]>(["home"]);
   /* StrictMode re-runs effects; history entries must not be duplicated. */
   const seededHistory = useRef(false);
@@ -73,6 +80,7 @@ export function MiniApp() {
     setUser(app?.initDataUnsafe.user ?? null);
     /* The SDK script is `beforeInteractive`, so this is already accurate. */
     setInTelegram(isTelegramClient());
+    setInitData(app?.initData ?? "");
 
     const fromHash = window.location.hash.slice(1);
     const fromQuery = new URLSearchParams(window.location.search).get("startapp") ?? undefined;
@@ -173,9 +181,9 @@ export function MiniApp() {
               </h1>
 
               <p className="mt-5 max-w-[33ch] text-[15px] leading-relaxed text-muted-foreground">
-                AdUnity on the web and inside Telegram. Campaigns, account
-                persistence, referrals, and rewards are not connected to backend
-                services yet.
+                AdUnity on the web and inside Telegram. Referral tracking uses
+                verified Telegram launches; campaigns are not connected, and
+                earnings and payouts are not configured.
               </p>
             </div>
 
@@ -224,7 +232,9 @@ export function MiniApp() {
                   {
                     icon: Sparkles,
                     title: "Referrals and rewards",
-                    body: "Tracking, earnings, and payouts require backend services that are not connected yet.",
+                    body: referral.summary
+                      ? "Verified invite tracking is connected. Earnings and payouts are not configured yet."
+                      : referral.error ?? "Referral data loads securely from a verified Telegram launch.",
                   },
                 ].map((feature) => {
                   const Icon = feature.icon;
@@ -250,7 +260,11 @@ export function MiniApp() {
             </div>
           </section>
 
-          <ReferralPanel active={active === "referral"} />
+          <ReferralPanel
+            active={active === "referral"}
+            initData={initData}
+            referral={referral}
+          />
 
           {(["ads", "profile"] as const).map((id) => {
             const content = COMING_SOON[id];

@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
-import { validateInitData } from "@/lib/telegram-auth";
+import { readInitData, validateInitData } from "@/lib/telegram-auth";
 
 /** crypto + env access require the Node runtime. */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type AuthRequest = { initData?: unknown };
-
-function readInitData(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  const { initData } = body as AuthRequest;
-  return typeof initData === "string" && initData.length > 0 ? initData : null;
-}
 
 /**
  * POST /api/auth
@@ -20,8 +12,9 @@ function readInitData(body: unknown): string | null {
  * Returns the verified user, or 401. This is the only trusted identity source;
  * everything the client renders from `initDataUnsafe` is cosmetic.
  *
- * Next steps once the database lands: upsert the returned `user.id` into
- * Postgres via Drizzle and mint your own session cookie here.
+ * This endpoint verifies identity only. Referral account creation and invite
+ * attribution happen transactionally in /api/referral; a first-party session
+ * cookie is still a separate future enhancement.
  */
 export async function POST(request: Request) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;

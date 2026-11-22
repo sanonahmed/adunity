@@ -9,6 +9,9 @@ next-env.d.ts
 # production
 /build
 
+# local referral database (keep the file on a persistent production volume)
+/.data/
+
 # local env files
 .env
 .env*.local
@@ -20,6 +23,9 @@ next-env.d.ts
 .DS_Store
 *.pem
 /coverage
+
+# throwaway local scripts (test harnesses, scratch checks)
+/.tmp-*
 
 # local dev and production server logs
 .preview-server*.log
