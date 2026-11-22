@@ -20,6 +20,7 @@ import {
 } from "@/lib/telegram";
 import { useReferral } from "./use-referral";
 import { ReferralPanel } from "./panels/referral-panel";
+import { ProfilePanel } from "./panels/profile-panel";
 import { TabBar } from "./tab-bar";
 import { isTabId, type TabId } from "./tabs";
 import { TopBar } from "./top-bar";
@@ -50,13 +51,6 @@ const COMING_SOON = {
     title: "A better way to discover.",
     description:
       "A considered selection of campaigns is on its way. Check back soon.",
-  },
-  profile: {
-    icon: UserRound,
-    eyebrow: "Your account",
-    title: "Your space, your progress.",
-    description:
-      "Your Telegram profile and activity will live here, all in one place.",
   },
 } as const;
 
@@ -264,7 +258,14 @@ export function MiniApp() {
             referral={referral}
           />
 
-          {(["ads", "profile"] as const).map((id) => {
+          <ProfilePanel
+            active={active === "profile"}
+            user={user}
+            referral={referral.summary}
+            loading={referral.loading}
+          />
+
+          {(["ads"] as const).map((id) => {
             const content = COMING_SOON[id];
             const Icon = content.icon;
 
@@ -301,27 +302,6 @@ export function MiniApp() {
                   </div>
                 </div>
 
-                {id === "profile" ? (
-                  <div className="rise-late glass mt-3 flex items-center gap-3 rounded-2xl p-4">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-muted-foreground">
-                      <UserRound className="size-4" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-[12.5px] font-semibold">
-                        {user
-                          ? [user.first_name, user.last_name]
-                              .filter(Boolean)
-                              .join(" ")
-                          : "Telegram profile"}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {user?.username
-                          ? `@${user.username}`
-                          : "Open in Telegram to load your profile"}
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
               </section>
             );
           })}
