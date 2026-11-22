@@ -4,8 +4,11 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { TelegramUser } from "./telegram";
 import {
+  computeRewards,
   parseReferralCode,
   REFERRAL_CODE_LENGTH,
+  REFERRAL_RECENT_LIMIT,
+  summariseActivity,
   type ReferralRecord,
   type ReferralSummary,
 } from "./referral";
@@ -23,13 +26,14 @@ import {
  *
  * Only Telegram ids, referral codes and referral timestamps are persisted;
  * profile names/usernames are neither necessary for counts nor shared with
- * referrers. Recent sign-ups therefore use a generic label.
+ * referrers. Recent sign-ups are therefore listed by join order alone.
  *
  * Limitations this file does not hide:
  *   - Serverless hosts with an ephemeral filesystem cannot keep this file.
  *     Use a host with a persistent disk, or replace this module with a
  *     Postgres-backed implementation of the same functions.
- *   - No payout/reward ledger exists, so nothing here credits earnings.
+ *   - Points are computed from these rows on read; there is no wallet, ledger
+ *     or payout state in the schema, so nothing here credits money.
  */
 
 /** 31 unambiguous characters: excludes I, L, O, 0 and 1. */
@@ -124,6 +128,38 @@ type UserRow = {
   created_at: string;
 };
 
+function readRank(
+  db: DatabaseSync,
+  invitedCount: number,
+): { rank: number | null; referrers: number } {
+  /* A leaderboard position only means something once the account has invited
+     someone; before that it is null and the UI shows a dash instead. */
+  if (invitedCount <= 0) return { rank: null, referrers: 0 };
+
+  const row = db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM (
+            SELECT referrer_telegram_id
+              FROM referrals
+             GROUP BY referrer_telegram_id
+            HAVING COUNT(*) > ?
+          )) AS ahead,
+         (SELECT COUNT(DISTINCT referrer_telegram_id) FROM referrals) AS referrers`,
+    )
+    .get(invitedCount) as { ahead: number; referrers: number } | undefined;
+
+  return { rank: (row?.ahead ?? 0) + 1, referrers: row?.referrers ?? 0 };
+}
+
+/**
+ * Builds the whole dashboard payload from stored rows.
+ *
+ * One query reads this referrer's invite timestamps newest-first; that single
+ * list drives the count, the activity chart, the streak, the best day and the
+ * recent list, so those figures can never disagree with each other. The list
+ * length is the number of people one account invited, which stays small.
+ */
 function readSummary(db: DatabaseSync, telegramId: number): ReferralSummary | null {
   const user = db
     .prepare("SELECT telegram_id, referral_code, created_at FROM users WHERE telegram_id = ?")
@@ -131,31 +167,41 @@ function readSummary(db: DatabaseSync, telegramId: number): ReferralSummary | nu
 
   if (!user) return null;
 
-  const count = db
-    .prepare("SELECT COUNT(*) AS invited FROM referrals WHERE referrer_telegram_id = ?")
-    .get(telegramId) as { invited: number } | undefined;
-
-  const recent = db
+  const rows = db
     .prepare(
-      `SELECT r.created_at
-         FROM referrals r
-        WHERE r.referrer_telegram_id = ?
-        ORDER BY r.created_at DESC
-        LIMIT 5`,
+      `SELECT created_at
+         FROM referrals
+        WHERE referrer_telegram_id = ?
+        ORDER BY created_at DESC, referred_telegram_id DESC`,
     )
     .all(telegramId) as Array<{ created_at: string }>;
 
-  const records: ReferralRecord[] = recent.map((row) => ({
-    name: "Verified Telegram user",
-    joinedAt: row.created_at,
-  }));
+  const invitedCount = rows.length;
+
+  /* Newest first in storage, so the join order is the count counting down. */
+  const recent: ReferralRecord[] = rows
+    .slice(0, REFERRAL_RECENT_LIMIT)
+    .map((row, position) => ({
+      index: invitedCount - position,
+      joinedAt: row.created_at,
+    }));
+
+  const { rank, referrers } = readRank(db, invitedCount);
 
   return {
     code: user.referral_code,
-    invitedCount: count?.invited ?? 0,
+    invitedCount,
     joinedAt: user.created_at,
-    recent: records,
-    rewardsConfigured: false,
+    recent,
+    stats: {
+      ...summariseActivity(
+        rows.map((row) => row.created_at),
+        new Date(),
+      ),
+      rank,
+      referrers,
+    },
+    rewards: computeRewards(invitedCount),
   };
 }
 

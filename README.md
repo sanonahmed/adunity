@@ -4,7 +4,7 @@ A single responsive **AdUnity** app served by the website and opened in Telegram
 Ink-black canvas, champagne-gold accent, four shared sections: **Home · Ads · Referral · Profile**.
 The website URL and Telegram Mini App use the same frontend build and hash-based tab routes.
 
-This milestone includes the Mini App shell, design system, Telegram identity layer, and a server-verified referral flow backed by SQLite. Referral invite codes and first-touch attribution are persisted; earnings and payouts remain unavailable because no reward policy is configured.
+This milestone includes the Mini App shell, design system, Telegram identity layer, and a server-verified referral flow backed by SQLite. Invite codes, first-touch attribution and a live referral dashboard — invite counts, reward points, activity and rank — are all derived from the stored rows. There is no payout ledger yet, so no money moves.
 
 ## Stack
 
@@ -125,8 +125,22 @@ everything else is `401` (`bad_signature`, `expired`, `missing_hash`, `malformed
    launch that carries a valid code — including accounts that already existed because
    the person opened the app from the menu button earlier. `referred_telegram_id` is
    the primary key, so replays and later links cannot change the referrer.
-4. The response holds only that caller's code, verified invite count and recent
-   sign-up timestamps; invitee names are never stored or returned.
+4. The response holds that caller's code, invite count, activity buckets, reward points
+   and recent sign-up timestamps; invitee names are never stored or returned.
+
+### Reward points
+
+Nothing is stored as a balance. Every number in the Referral tab is recomputed from
+`referrals` rows on each request, so the dashboard can always be reproduced from the
+database and can never drift from the real invites:
+
+- `REFERRAL_POINTS_PER_INVITE` (default `100`) per verified invite;
+- one-off milestone bonuses from `REFERRAL_MILESTONES` (3 / 5 / 10 / 25 / 50 invites);
+- `REFERRAL_POINT_VALUE_USD` (default `0`, no cash estimate) optionally converts points into an estimate. Set it to `0` to show points only; displayed points have no cash value and there is no wallet or payout ledger.
+
+Change those constants in `lib/referral.ts`; the API and the panel read the same values.
+The rank tile compares this account with every other account that has invited someone.
+There is still no wallet or payout ledger, so nothing is debited or paid out.
 
 Prerequisites — the panel stays locked until these are true:
 
@@ -140,8 +154,7 @@ Prerequisites — the panel stays locked until these are true:
   `/newapp`, and otherwise Telegram answers "bot application not found" — every invite
   link would fail.
 
-Referral data is deliberately unavailable in a plain browser: there is no signed
-Telegram launch, so there is no trustworthy identity to attach a code to.
+Referral data is unavailable in a plain browser because no verified Telegram account is attached.
 
 ## Deploying as a Mini App
 
@@ -168,31 +181,19 @@ Telegram Mini App; use an HTTPS deployment or tunnel for Telegram testing.
 `next.config.ts` sends `Content-Security-Policy: frame-ancestors` for Telegram origins;
 `X-Frame-Options` has no "allow all" value and is intentionally not used.
 
-### Troubleshooting invite links
-
-- **"Bot application not found"** — the URL named a Mini App short name that does not
-  exist. This app never builds such links; if you pasted one by hand, use
-  `https://t.me/<bot>?startapp=ref_<code>`. If the bot-only link opens the chat without
-  launching anything, the menu button from step 2 is not configured.
-- **"Invite links are not configured yet"** in the Referral tab —
-  `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` was empty at *build* time. `NEXT_PUBLIC_*` values
-  are inlined into the bundle, so update the variable and rebuild/redeploy.
-- **"Referral verification is not configured"** — `TELEGRAM_BOT_TOKEN` is missing on the
-  server. A `401` instead means the token belongs to a different bot than the one that
-  launched the Mini App.
-- **An invite is not counted** — the invitee has to open the invite link itself; opening
-  the bot's menu button carries no code. Attribution happens once per account, on the
-  first launch that carries a valid code, so later links cannot move an invitee to a
-  different referrer.
+- **Invite link shows "bot application not found"** — copy the bot's menu-button link and share it instead.
+- **Your invite link is unavailable** — reopen AdUnity in Telegram and try again.
+- **Your referral data isn't loading** — close and reopen AdUnity, then try refreshing your stats.
+- **An invite isn't showing up** — ask the person to open your invite link. Each account is counted once.
 
 ## Production readiness
 
 `npm run build` produces the same optimized Next.js app for the website and Telegram.
 For a Telegram launch, deploy it to HTTPS, set the BotFather menu button to that URL,
-and provide `TELEGRAM_BOT_TOKEN` as a fresh server-only BotFather secret. The `/api/auth` route validates Telegram `initData`; `/api/referral` additionally persists verified invite codes and first-touch attribution in SQLite. Set `ADUNITY_DB_PATH` to a durable writable volume in production: ephemeral serverless filesystems lose referral records after restart. Invitees launch with `?startapp=ref_<code>`. Real campaigns, earnings, and payouts remain unavailable until reward policy and payout accounting are configured.
+and provide `TELEGRAM_BOT_TOKEN` as a fresh server-only BotFather secret. The `/api/auth` route validates Telegram `initData`; `/api/referral` additionally persists verified invite codes and first-touch attribution in SQLite. Set `ADUNITY_DB_PATH` to a durable writable volume in production: ephemeral serverless filesystems lose referral records after restart. Invitees launch with `?startapp=ref_<code>`. Reward points are computed from verified invites; campaigns and cash payouts still need campaign data and a payout ledger.
 
 ## Not built yet
 
 - Production-grade Postgres migration and referral fraud checks; the current SQLite store needs a persistent volume
-- Real campaigns, reward crediting and a payout ledger
+- Campaign data and a payout ledger — reward points are computed, but nothing is paid out yet
 - Localisation / `@telegram-apps/telegram-ui` migration if native chrome is preferred

@@ -178,9 +178,8 @@ export function MiniApp() {
               </h1>
 
               <p className="mt-5 max-w-[33ch] text-[15px] leading-relaxed text-muted-foreground">
-                AdUnity on the web and inside Telegram. Referral tracking uses
-                verified Telegram launches; campaigns are not connected, and
-                earnings and payouts are not configured.
+                Discover, share and grow — all inside Telegram. Your referral
+                dashboard tracks every verified invitation in one place.
               </p>
             </div>
 
@@ -206,32 +205,34 @@ export function MiniApp() {
 
             <div className="glass mt-10 rounded-3xl p-5">
               <div className="flex items-center justify-between gap-3">
-                <p className="eyebrow">Current status</p>
+                <p className="eyebrow">Your progress</p>
                 <span className="grid size-8 place-items-center rounded-lg border border-gold/15 bg-gold-soft text-gold">
                   <Compass className="size-4" aria-hidden="true" />
                 </span>
               </div>
-
               <div className="hairline my-5" />
-
               <ul className="space-y-4">
                 {[
                   {
                     icon: ShieldCheck,
-                    title: "Telegram verification",
-                    body: "The server verification endpoint requires the real BotFather token.",
+                    title: "Verified account",
+                    body: user
+                      ? "You're signed in with your Telegram account."
+                      : "Open AdUnity from Telegram to verify your account.",
                   },
                   {
                     icon: Megaphone,
                     title: "Campaigns",
-                    body: "No live campaign data is connected yet.",
+                    body: "Campaigns are on their way. Check back soon.",
                   },
                   {
                     icon: Sparkles,
                     title: "Referrals and rewards",
                     body: referral.summary
-                      ? "Verified invite tracking is connected. Earnings and payouts are not configured yet."
-                      : referral.error ?? "Referral data loads securely from a verified Telegram launch.",
+                      ? `${referral.summary.invitedCount} verified ${
+                          referral.summary.invitedCount === 1 ? "invite" : "invites"
+                        } · ${referral.summary.rewards.points} points earned.`
+                      : "Your invites, activity and reward points are in the Referral tab.",
                   },
                 ].map((feature) => {
                   const Icon = feature.icon;

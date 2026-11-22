@@ -14,10 +14,80 @@ export const REFERRAL_START_PREFIX = "ref_";
 /** 8 characters from a 31-symbol alphabet — unambiguous, ~2^40 space. */
 export const REFERRAL_CODE_LENGTH = 8;
 
+/** How many referred users the dashboard lists. */
+export const REFERRAL_RECENT_LIMIT = 8;
+
+/** Width of the activity chart, in calendar days (today included). */
+export const REFERRAL_ACTIVITY_DAYS = 14;
+
+/* ── rewards programme ──────────────────────────────────────────
+   Every figure below is derived from the stored referral rows, so
+   the dashboard can always be reproduced from the database. There
+   is no wallet and no ledger: points measure verified invites.
+   ─────────────────────────────────────────────────────────────── */
+
+/** Points credited for each verified invite. */
+export const REFERRAL_POINTS_PER_INVITE = 100;
+
+/** Program conversion rate; `0` shows points only and hides cash estimates. */
+export const REFERRAL_POINT_VALUE_USD = 0;
+
+export type ReferralMilestone = { target: number; bonus: number };
+
+/** One-off bonus, credited the first time the invite count reaches a target. */
+export const REFERRAL_MILESTONES: readonly ReferralMilestone[] = [
+  { target: 3, bonus: 150 },
+  { target: 5, bonus: 300 },
+  { target: 10, bonus: 800 },
+  { target: 25, bonus: 2500 },
+  { target: 50, bonus: 6000 },
+];
+
 export type ReferralRecord = {
-  /** Privacy-safe generic label; invitee names are never stored or shared. */
-  name: string;
+  /** 1-based join order for this referrer: the oldest invite is 1. */
+  index: number;
   joinedAt: string;
+};
+
+export type ReferralActivityDay = {
+  /** Calendar day, `YYYY-MM-DD`. */
+  date: string;
+  count: number;
+};
+
+export type ReferralActivity = {
+  /** `REFERRAL_ACTIVITY_DAYS` buckets, oldest first, zero-filled. */
+  days: ReferralActivityDay[];
+  today: number;
+  last7Days: number;
+  /** The 7 days before `last7Days`, for a week-over-week comparison. */
+  previous7Days: number;
+  last30Days: number;
+  /** Distinct days with at least one invite in the last 30 days. */
+  activeDays: number;
+  bestDay: ReferralActivityDay | null;
+  lastInviteAt: string | null;
+  /** Consecutive days ending today (or yesterday) with at least one invite. */
+  streakDays: number;
+};
+
+export type ReferralStats = ReferralActivity & {
+  /** Position among accounts that have invited someone; null before the first. */
+  rank: number | null;
+  /** How many accounts that leaderboard contains. */
+  referrers: number;
+};
+
+export type ReferralRewards = {
+  points: number;
+  invitePoints: number;
+  bonusPoints: number;
+  pointsPerInvite: number;
+  /** Estimated value of `points`; null when the program sets no rate. */
+  estimatedUsd: number | null;
+  nextMilestone: { target: number; bonus: number; remaining: number } | null;
+  /** 0..1 progress toward `nextMilestone`; 1 once every tier is reached. */
+  progress: number;
 };
 
 export type ReferralSummary = {
@@ -26,11 +96,8 @@ export type ReferralSummary = {
   /** When this account was first recorded by the server (ISO 8601). */
   joinedAt: string;
   recent: ReferralRecord[];
-  /**
-   * There is no reward or payout policy in the product yet, so earnings are
-   * never derived. The panel states this instead of showing a number.
-   */
-  rewardsConfigured: false;
+  stats: ReferralStats;
+  rewards: ReferralRewards;
 };
 
 export type ReferralApiSuccess = { ok: true; referral: ReferralSummary };
@@ -103,4 +170,133 @@ export function formatReferralCode(code: string): string {
   const clean = code.trim().toUpperCase();
   if (clean.length !== REFERRAL_CODE_LENGTH) return clean;
   return `${clean.slice(0, 4)} ${clean.slice(4)}`;
+}
+
+const DAY_MS = 86_400_000;
+
+/** `YYYY-MM-DD` for an ISO timestamp, or null when it cannot be parsed. */
+function dayKey(value: string): string | null {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+/** Calendar day `offset` days before `now`, as `YYYY-MM-DD`. */
+function dayKeyFrom(now: Date, offset: number): string {
+  return new Date(now.getTime() - offset * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Turns raw invite timestamps into every activity figure the dashboard shows.
+ *
+ * Pure and deterministic for a given `now`, so the numbers can be unit-tested
+ * and recomputed identically on the server and in tests. Days are grouped in
+ * **UTC**, the only timezone the server can trust: a referrer in UTC+13 and one
+ * in UTC-8 both see the same buckets rather than two different totals.
+ *
+ * Unparseable timestamps are ignored rather than throwing, so one bad row can
+ * never blank the whole dashboard.
+ */
+export function summariseActivity(
+  timestamps: readonly string[],
+  now: Date = new Date(),
+  windowDays: number = REFERRAL_ACTIVITY_DAYS,
+): ReferralActivity {
+  const counts = new Map<string, number>();
+  let lastInviteAt: string | null = null;
+
+  for (const stamp of timestamps) {
+    const key = dayKey(stamp);
+    if (!key) continue;
+
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (lastInviteAt === null || Date.parse(stamp) > Date.parse(lastInviteAt)) {
+      lastInviteAt = stamp;
+    }
+  }
+
+  const window = Number.isFinite(windowDays) ? Math.max(1, Math.floor(windowDays)) : REFERRAL_ACTIVITY_DAYS;
+  const days: ReferralActivityDay[] = [];
+  for (let offset = window - 1; offset >= 0; offset -= 1) {
+    const date = dayKeyFrom(now, offset);
+    days.push({ date, count: counts.get(date) ?? 0 });
+  }
+
+  function totalBetween(from: number, to: number): number {
+    let sum = 0;
+    for (let offset = from; offset <= to; offset += 1) {
+      sum += counts.get(dayKeyFrom(now, offset)) ?? 0;
+    }
+    return sum;
+  }
+
+  /* Earliest day wins a tie, so the "best day" label never flickers between
+     two equally busy days. */
+  let bestDay: ReferralActivityDay | null = null;
+  for (const date of [...counts.keys()].sort()) {
+    const count = counts.get(date) ?? 0;
+    if (bestDay === null || count > bestDay.count) bestDay = { date, count };
+  }
+
+  /* A streak stays alive until today ends, so it is measured from today when
+     today already has an invite and from yesterday otherwise. */
+  let streakDays = 0;
+  for (let offset = counts.has(dayKeyFrom(now, 0)) ? 0 : 1; counts.has(dayKeyFrom(now, offset)); offset += 1) {
+    streakDays += 1;
+  }
+
+  return {
+    days,
+    today: counts.get(dayKeyFrom(now, 0)) ?? 0,
+    last7Days: totalBetween(0, 6),
+    previous7Days: totalBetween(7, 13),
+    last30Days: totalBetween(0, 29),
+    activeDays: Array.from({ length: 30 }, (_, offset) => dayKeyFrom(now, offset)).filter(
+      (date) => (counts.get(date) ?? 0) > 0,
+    ).length,
+    bestDay,
+    lastInviteAt,
+    streakDays,
+  };
+}
+
+/**
+ * Points and milestone progress for a verified invite count.
+ *
+ * Kept here (not in the UI) so the same figure is used by the server response
+ * and by any future payout job: one rule set, one source of truth.
+ */
+export function computeRewards(invitedCount: number): ReferralRewards {
+  const count = Number.isFinite(invitedCount) ? Math.max(0, Math.floor(invitedCount)) : 0;
+  const invitePoints = count * REFERRAL_POINTS_PER_INVITE;
+
+  let bonusPoints = 0;
+  let reachedTarget = 0;
+  for (const milestone of REFERRAL_MILESTONES) {
+    if (count < milestone.target) break;
+    bonusPoints += milestone.bonus;
+    reachedTarget = milestone.target;
+  }
+
+  const next = REFERRAL_MILESTONES.find((milestone) => count < milestone.target) ?? null;
+  const points = invitePoints + bonusPoints;
+
+  return {
+    points,
+    invitePoints,
+    bonusPoints,
+    pointsPerInvite: REFERRAL_POINTS_PER_INVITE,
+    estimatedUsd:
+      REFERRAL_POINT_VALUE_USD > 0
+        ? Math.round(points * REFERRAL_POINT_VALUE_USD * 100) / 100
+        : null,
+    nextMilestone: next
+      ? {
+          target: next.target,
+          bonus: next.bonus,
+          remaining: next.target - count,
+        }
+      : null,
+    progress: next ? (count - reachedTarget) / (next.target - reachedTarget) : 1,
+  };
 }

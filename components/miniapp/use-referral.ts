@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildInviteLink,
   type ReferralApiResponse,
@@ -12,15 +12,15 @@ const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
 /** Server error codes -> readable copy. Unknown codes never leak internals. */
 export const REFERRAL_ERROR_COPY: Record<string, string> = {
   server_not_configured:
-    "Referral verification is not configured. The app owner must set the server-only Telegram bot token.",
-  bad_signature: "Telegram could not verify this launch. Close and reopen AdUnity from Telegram.",
+    "Referral rewards are temporarily unavailable. Please try again in a moment.",
+  bad_signature: "We couldn't verify this Telegram session. Reopen AdUnity and try again.",
   expired: "This Telegram session has expired. Close and reopen AdUnity to refresh it.",
-  missing_hash: "Telegram did not provide a verifiable launch. Reopen AdUnity from Telegram.",
+  missing_hash: "We couldn't verify this Telegram session. Reopen AdUnity and try again.",
   missing_auth_date:
-    "Telegram did not provide a verifiable launch time. Reopen AdUnity from Telegram.",
+    "We couldn't verify this Telegram session. Reopen AdUnity and try again.",
   malformed_user:
-    "Telegram did not provide a usable profile. Reopen AdUnity from your personal Telegram account.",
-  store_error: "Referral storage is temporarily unavailable. Please try again shortly.",
+    "Open AdUnity from your personal Telegram account and try again.",
+  store_error: "Referral data is temporarily unavailable. Please try again shortly.",
 };
 
 export type ReferralState = {
@@ -47,13 +47,23 @@ export function useReferral(initData: string): ReferralState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const loadedInitData = useRef("");
 
   useEffect(() => {
-    if (!initData) return;
+    /* Clear a previous account's invitees when Telegram switches accounts or
+       the app leaves Telegram, but retain the current summary during refresh. */
+    if (loadedInitData.current !== initData) {
+      loadedInitData.current = initData;
+      setSummary(null);
+      setError(null);
+    }
+    if (!initData) {
+      setLoading(false);
+      return;
+    }
 
     const controller = new AbortController();
     setLoading(true);
-    setError(null);
 
     void fetch("/api/referral", {
       method: "POST",
