@@ -37,7 +37,7 @@ npm run start      # serve the build
 Copy `.env.example` to `.env.local` before deploying. Set `TELEGRAM_BOT_TOKEN`
 server-side for `POST /api/auth`. After creating a Telegram Mini App with BotFather,
 set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` and `NEXT_PUBLIC_TELEGRAM_APP_SHORT_NAME`
-to show the website's **Open in Telegram** link. Rebuild after changing `NEXT_PUBLIC_*`
+to show the browser-only **Open in Telegram** link (hidden inside Telegram). Rebuild after changing `NEXT_PUBLIC_*`
 values. Never expose `TELEGRAM_BOT_TOKEN` with a `NEXT_PUBLIC_` prefix.
 
 ## Structure

@@ -62,6 +62,8 @@ const COMING_SOON = {
 export function MiniApp() {
   const [active, setActive] = useState<TabId>("home");
   const [user, setUser] = useState<TelegramUser | null>(null);
+  /* Server HTML cannot know this; resolved before the first paint below. */
+  const [inTelegram, setInTelegram] = useState(false);
   const tabHistory = useRef<TabId[]>(["home"]);
   /* StrictMode re-runs effects; history entries must not be duplicated. */
   const seededHistory = useRef(false);
@@ -69,6 +71,8 @@ export function MiniApp() {
   useIsomorphicLayoutEffect(() => {
     const app = initTelegram();
     setUser(app?.initDataUnsafe.user ?? null);
+    /* The SDK script is `beforeInteractive`, so this is already accurate. */
+    setInTelegram(isTelegramClient());
 
     const fromHash = window.location.hash.slice(1);
     const fromQuery = new URLSearchParams(window.location.search).get("startapp") ?? undefined;
@@ -310,21 +314,25 @@ export function MiniApp() {
             );
           })}
 
-          <p className="mt-12 text-center text-[9.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground/40">
-            AdUnity · Same app on web and Telegram
-          </p>
-          {TELEGRAM_APP_URL ? (
-            <p className="mt-3 text-center">
-              <a
-                href={TELEGRAM_APP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-gold hover:underline"
-              >
-                Open in Telegram
-                <ArrowUpRight aria-hidden="true" className="size-3.5" />
-              </a>
-            </p>
+          {!inTelegram ? (
+            <>
+              <p className="mt-12 text-center text-[9.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground/40">
+                AdUnity · Same app on web and Telegram
+              </p>
+              {TELEGRAM_APP_URL ? (
+                <p className="mt-3 text-center">
+                  <a
+                    href={TELEGRAM_APP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gold hover:underline"
+                  >
+                    Open in Telegram
+                    <ArrowUpRight aria-hidden="true" className="size-3.5" />
+                  </a>
+                </p>
+              ) : null}
+            </>
           ) : null}
         </main>
 
