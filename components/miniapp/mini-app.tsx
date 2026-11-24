@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowRight,
-  ArrowUpRight,
   Compass,
   Megaphone,
   ShieldCheck,
@@ -21,17 +20,11 @@ import {
 import { useReferral } from "./use-referral";
 import { ReferralPanel } from "./panels/referral-panel";
 import { ProfilePanel } from "./panels/profile-panel";
+import { AutoBotPanel } from "./panels/auto-bot-panel";
 import { TabBar } from "./tab-bar";
 import { REFERRAL_COMMISSION_PERCENT } from "@/lib/referral";
 import { isTabId, type TabId } from "./tabs";
 import { TopBar } from "./top-bar";
-
-const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
-/* The bot's main Mini App (menu button) is what `t.me/<bot>?startapp` launches.
-   A `<bot>/<short_name>` link is never built: a short name that was not
-   registered with BotFather `/newapp` makes Telegram answer "bot application
-   not found" instead of opening the app. */
-const TELEGRAM_APP_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?startapp` : null;
 
 /* Avoid useLayoutEffect's server warning while resolving Telegram/deep-link
    state before the first browser paint. */
@@ -45,21 +38,9 @@ function tabFromStartParam(value: string | null | undefined): TabId | null {
   return isTabId(normalized) ? normalized : null;
 }
 
-const COMING_SOON = {
-  ads: {
-    icon: Megaphone,
-    eyebrow: "Campaigns",
-    title: "A better way to discover.",
-    description:
-      "A considered selection of campaigns is on its way. Check back soon.",
-  },
-} as const;
-
 export function MiniApp() {
   const [active, setActive] = useState<TabId>("home");
   const [user, setUser] = useState<TelegramUser | null>(null);
-  /* Server HTML cannot know this; resolved before the first paint below. */
-  const [inTelegram, setInTelegram] = useState(false);
   /* Signed launch payload; empty until the browser-only check below runs. */
   const [initData, setInitData] = useState("");
   const referral = useReferral(initData);
@@ -70,8 +51,6 @@ export function MiniApp() {
   useIsomorphicLayoutEffect(() => {
     const app = initTelegram();
     setUser(app?.initDataUnsafe.user ?? null);
-    /* The SDK script is `beforeInteractive`, so this is already accurate. */
-    setInTelegram(isTelegramClient());
     setInitData(app?.initData ?? "");
 
     const fromHash = window.location.hash.slice(1);
@@ -266,67 +245,8 @@ export function MiniApp() {
             loading={referral.loading}
           />
 
-          {(["ads"] as const).map((id) => {
-            const content = COMING_SOON[id];
-            const Icon = content.icon;
+          <AutoBotPanel active={active === "ads"} />
 
-            return (
-              <section
-                key={id}
-                id={`panel-${id}`}
-                role="tabpanel"
-                aria-labelledby={`tab-${id}`}
-                tabIndex={0}
-                hidden={active !== id}
-                className="panel-enter pt-14 outline-none"
-              >
-                <div className="rise glass overflow-hidden rounded-3xl p-6">
-                  <div className="flex items-center justify-between">
-                    <span className="grid size-11 place-items-center rounded-2xl border border-gold/20 bg-gold-soft text-gold">
-                      <Icon className="size-[19px]" aria-hidden="true" />
-                    </span>
-                    <Badge variant="muted">Coming soon</Badge>
-                  </div>
-
-                  <p className="eyebrow mt-9">{content.eyebrow}</p>
-                  <h1 className="mt-2 max-w-[13ch] text-[29px] font-semibold leading-[1.08] tracking-[-0.04em]">
-                    {content.title}
-                  </h1>
-                  <p className="mt-3 max-w-[36ch] text-[13.5px] leading-relaxed text-muted-foreground">
-                    {content.description}
-                  </p>
-
-                  <div className="hairline my-6" />
-                  <div className="flex items-center gap-2 text-[11.5px] text-foreground/60">
-                    <span className="size-1.5 rounded-full bg-gold/80" />
-                    <span>Same AdUnity Mini App on web and Telegram</span>
-                  </div>
-                </div>
-
-              </section>
-            );
-          })}
-
-          {!inTelegram ? (
-            <>
-              <p className="mt-12 text-center text-[9.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground/40">
-                AdUnity · Same app on web and Telegram
-              </p>
-              {TELEGRAM_APP_URL ? (
-                <p className="mt-3 text-center">
-                  <a
-                    href={TELEGRAM_APP_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gold hover:underline"
-                  >
-                    Open in Telegram
-                    <ArrowUpRight aria-hidden="true" className="size-3.5" />
-                  </a>
-                </p>
-              ) : null}
-            </>
-          ) : null}
         </main>
 
         <TabBar active={active} onChange={navigate} />

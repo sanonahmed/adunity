@@ -12,7 +12,7 @@ export type TabDefinition = {
 
 export const TABS: readonly TabDefinition[] = [
   { id: "home", label: "Home", icon: House, hint: "Overview" },
-  { id: "ads", label: "Ads", icon: Megaphone, hint: "Campaigns" },
+  { id: "ads", label: "Auto Bot", icon: Megaphone, hint: "Campaigns" },
   { id: "referral", label: "Referral", icon: Gift, hint: "Your invite link and referrals" },
   { id: "profile", label: "Profile", icon: UserRound, hint: "Account" },
 ] as const;
