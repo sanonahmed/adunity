@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Compass, Megaphone, ShieldCheck, Sparkles } from "lucide-react";
+import { OfferPanel } from "./panels/offer-panel";
 import {
   hapticTap,
   initTelegram,
@@ -274,6 +275,15 @@ export function MiniApp() {
               </ul>
             </div>
           </section>
+
+          <OfferPanel
+            active={active === "offer"}
+            initData={initData}
+            referralCount={referral.summary?.invitedCount ?? 0}
+            referralLoading={referral.loading}
+            referralError={Boolean(referral.error) || !initData}
+            onGoToReferrals={() => navigate("referral")}
+          />
 
           <ReferralPanel
             active={active === "referral"}

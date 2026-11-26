@@ -1,6 +1,6 @@
-import { Gift, House, Megaphone, UserRound, type LucideIcon } from "lucide-react";
+import { Gift, House, Megaphone, Tag, UserRound, type LucideIcon } from "lucide-react";
 
-export type TabId = "home" | "ads" | "referral" | "profile";
+export type TabId = "home" | "ads" | "offer" | "referral" | "profile";
 
 export type TabDefinition = {
   id: TabId;
@@ -13,6 +13,7 @@ export type TabDefinition = {
 export const TABS: readonly TabDefinition[] = [
   { id: "home", label: "Home", icon: House, hint: "Overview" },
   { id: "ads", label: "Auto Bot", icon: Megaphone, hint: "Campaigns" },
+  { id: "offer", label: "Offer", icon: Tag, hint: "Available offers" },
   { id: "referral", label: "Referral", icon: Gift, hint: "Your invite link and referrals" },
   { id: "profile", label: "Profile", icon: UserRound, hint: "Account" },
 ] as const;

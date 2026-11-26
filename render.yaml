@@ -27,3 +27,20 @@ services:
       # Neon Console -> project -> Connect. Never add a NEXT_PUBLIC_ prefix.
       - key: DATABASE_URL
         sync: false
+
+      # Binance Pay merchant credentials and public HTTPS callback origin.
+      # Keep all Binance values server-side; configure /api/binance-pay/webhook
+      # in Binance Merchant Center and make sure the certificate API is reachable.
+      - key: BINANCE_PAY_API_KEY
+        sync: false
+      - key: BINANCE_PAY_SECRET
+        sync: false
+      - key: BINANCE_PAY_MERCHANT_ID
+        sync: false
+      - key: BINANCE_PAY_CALLBACK_BASE_URL
+        sync: false
+      # Optional; defaults to APP and https://bpay.binanceapi.com respectively.
+      - key: BINANCE_PAY_TERMINAL_TYPE
+        value: APP
+      - key: BINANCE_PAY_BASE_URL
+        value: https://bpay.binanceapi.com

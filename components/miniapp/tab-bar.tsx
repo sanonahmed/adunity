@@ -12,7 +12,7 @@ type TabBarProps = {
 };
 
 /**
- * Bottom navigation. Four equal tabs, gold indicator that slides via transform,
+ * Bottom navigation. Equal-width tabs, gold indicator that slides via transform,
  * roving tabindex + arrow/Home/End keys per the WAI-ARIA tabs pattern.
  */
 export function TabBar({ active, onChange, light = false }: TabBarProps) {
@@ -84,7 +84,7 @@ export function TabBar({ active, onChange, light = false }: TabBarProps) {
           <span
             aria-hidden="true"
             className={cn(
-              "tab-indicator pointer-events-none absolute inset-y-1.5 left-1.5 w-[calc((100%-0.75rem)/4)] rounded-[16px]",
+              "tab-indicator pointer-events-none absolute inset-y-1.5 left-1.5 w-[calc((100%-0.75rem)/5)] rounded-[16px]",
               light
                 ? "border border-[#e6d2a8] bg-[linear-gradient(180deg,#faf5e9,#f1e6cb)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
                 : "border border-gold/20 bg-[linear-gradient(180deg,rgba(230,210,168,0.17),rgba(230,210,168,0.05))] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
