@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        /* The admin panel must never be framed by Telegram or any other site. */
+        source: "/admin/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
     ];
   },
 };

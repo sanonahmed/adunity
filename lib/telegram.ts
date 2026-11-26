@@ -137,6 +137,20 @@ export function initTelegram(): TelegramWebApp | null {
   return app;
 }
 
+/**
+ * Repaint Telegram's own header/background strip so it keeps blending with the
+ * page. Hex values only landed in Bot API 6.9 (6.1 understands just the
+ * `bg_color` / `secondary_bg_color` keywords), so older clients are left alone
+ * rather than fed a value the SDK logs a warning about.
+ */
+export function setChromeColor(hex: string): void {
+  const app = getWebApp();
+  if (!app || !isTelegramClient() || !supports("6.9")) return;
+
+  attempt(() => app.setHeaderColor(hex));
+  attempt(() => app.setBackgroundColor(hex));
+}
+
 /** Haptics only on 6.1+ clients that are actually inside Telegram. */
 function haptics(): NonNullable<TelegramWebApp["HapticFeedback"]> | null {
   const app = getWebApp();

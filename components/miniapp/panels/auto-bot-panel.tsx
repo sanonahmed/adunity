@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, CircleCheck, LoaderCircle, Mail, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { remainingQuantity, type BuyerRequest } from "@/lib/market";
 
 type DemoForm = {
   firstName: string;
@@ -36,11 +37,10 @@ function slugPart(value: string) {
     .toLowerCase();
 }
 
-function buildSampleAddresses(form: DemoForm, count: number) {
+function buildSampleAddresses(form: DemoForm, count: number, used: Set<string>) {
   const first = slugPart(form.firstName) || "user";
   const last = slugPart(form.lastName);
   const base = `${first}${last ? `.${last}` : ""}`.slice(0, 24);
-  const used = new Set<string>();
   const addresses: string[] = [];
 
   for (let index = 0; index < count; index += 1) {
@@ -71,7 +71,15 @@ function GoogleLogo() {
   );
 }
 
-export function AutoBotPanel({ active }: { active: boolean }) {
+export function AutoBotPanel({
+  active,
+  buyer,
+  onSellDemo,
+}: {
+  active: boolean;
+  buyer: BuyerRequest | null;
+  onSellDemo: (quantity: number) => Promise<boolean>;
+}) {
   const [demoKey, setDemoKey] = useState("");
   const [activationError, setActivationError] = useState("");
   const [activating, setActivating] = useState(false);
@@ -82,7 +90,13 @@ export function AutoBotPanel({ active }: { active: boolean }) {
   const [action, setAction] = useState("");
   const [addresses, setAddresses] = useState<string[]>([]);
   const [revealed, setRevealed] = useState(0);
-  const total = Math.min(25, Math.max(1, Number(form.count) || 1));
+  const [saleNotice, setSaleNotice] = useState("");
+  const saleHandled = useRef(false);
+  const usedAddresses = useRef(new Set<string>());
+  const requestedTotal = Math.min(25, Math.max(1, Number(form.count) || 1));
+  const total = buyer
+    ? Math.min(requestedTotal, remainingQuantity(buyer))
+    : requestedTotal;
   const totalSteps = total * 3;
 
   useEffect(() => {
@@ -110,11 +124,12 @@ export function AutoBotPanel({ active }: { active: boolean }) {
     setStage("idle");
     setProgress(0);
     setAction("");
+    setSaleNotice("");
   }
 
   return (
     <section id="panel-ads" role="tabpanel" aria-labelledby="tab-ads" tabIndex={0} hidden={!active}
-      className="panel-enter -mx-5 min-h-[calc(100dvh-10rem)] border-y border-[#e8eaed] bg-white px-5 pb-10 pt-8 text-[#202124] outline-none sm:px-7 sm:pt-10">
+      className="panel-enter -mx-5 min-h-[calc(100dvh-10rem)] bg-white px-5 pb-10 pt-8 text-[#202124] outline-none sm:px-7 sm:pt-10">
       <div className="mx-auto flex w-full max-w-md flex-col items-center">
         {stage === "idle" ? (
           <>
@@ -152,23 +167,25 @@ export function AutoBotPanel({ active }: { active: boolean }) {
           }}>
             <label htmlFor="google-api-key" className="sr-only">Server activation key</label>
             <input id="google-api-key" type="password" autoComplete="off" required value={demoKey}
+              autoCapitalize="characters" spellCheck={false}
               aria-invalid={activationError ? true : undefined} aria-describedby="activation-help"
               onChange={(event) => {
                 setDemoKey(event.target.value);
                 setActivationError("");
-              }} placeholder="Enter server activation key" className={inputClass} />
+              }} placeholder="ADU-XXXX-XXXX-XXXX-XXXX-XXXX" className={inputClass} />
             {activationError ? <p role="alert" className="text-xs leading-5 text-[#b42318]">{activationError}</p> : null}
             <Button type="submit" disabled={activating} className="h-12 w-full rounded-xl border border-gold/20 bg-[linear-gradient(180deg,#f8edd3_0%,#e6d2a8_46%,#c9a86f_100%)] text-sm font-semibold text-[#171208] shadow-[0_16px_36px_-18px_rgba(230,210,168,0.42)] hover:brightness-105">
               {activating ? "Checking key…" : "Activate"}
             </Button>
             <p id="activation-help" className="text-center text-xs leading-5 text-[#5f6368]">
-              Activation keys are verified securely by the server.
+              Keys start with ADU- and are verified securely by the server.
             </p>
           </form>
         ) : stage === "idle" ? (
           <form className="w-full space-y-4" onSubmit={(event) => {
             event.preventDefault();
-            setAddresses(buildSampleAddresses(form, total));
+            saleHandled.current = false;
+            setAddresses(buildSampleAddresses(form, total, usedAddresses.current));
             setRevealed(0);
             setProgress(0);
             setAction("Starting demo simulation…");
@@ -187,10 +204,19 @@ export function AutoBotPanel({ active }: { active: boolean }) {
               </div>
             </div>
 
+            {buyer ? (
+              <div className="w-full rounded-2xl border border-[#e8eaed] bg-[#f8f9fa] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8a6a35]">Selected buyer · demo only</p>
+                <p className="mt-1 text-sm font-semibold text-[#202124]">{buyer.buyer}</p>
+                <p className="mt-1 text-[11px] leading-4 text-[#5f6368]">Up to {remainingQuantity(buyer)} sample(s) remaining · {buyer.budgetPerAccountBdt.toLocaleString()} BDT per sample (illustrative)</p>
+              </div>
+            ) : null}
+            {saleNotice ? <p role="status" className="w-full rounded-xl border border-[#e8eaed] bg-[#f8f9fa] px-3 py-2 text-xs text-[#3c4043]">{saleNotice}</p> : null}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label htmlFor="demo-age" className="text-xs font-medium text-[#3c4043]">Age</label>
-                <input id="demo-age" type="number" required min={13} max={120} value={form.age}
+                <label htmlFor="demo-age" className="text-xs font-medium text-[#3c4043]">Age (18+ required)</label>
+                <input id="demo-age" type="number" required min={18} max={120} value={form.age}
                   onChange={(event) => updateForm("age", event.target.value)} placeholder="Age" className={inputClass} />
               </div>
               <div className="space-y-1.5">
@@ -206,18 +232,19 @@ export function AutoBotPanel({ active }: { active: boolean }) {
 
             <div className="space-y-1.5">
               <label htmlFor="simulation-passphrase" className="text-xs font-medium text-[#3c4043]">Simulation passphrase (required)</label>
-              <input id="simulation-passphrase" name="simulationPassphrase" type="password" autoComplete="new-password" required placeholder="Enter a simulation-only passphrase" className={inputClass} />
-              <p className="text-[11px] leading-4 text-[#5f6368]">Required to continue. This isn’t a Google password and isn’t saved or sent.</p>
+              <input id="simulation-passphrase" name="simulationPassphrase" type="password" autoComplete="new-password" required minLength={8} maxLength={128} placeholder="At least 8 characters" className={inputClass} />
+              <p className="text-[11px] leading-4 text-[#5f6368]">At least 8 characters. This is a simulation-only passphrase, not a Google password; it isn’t saved or sent.</p>
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor="demo-count" className="text-xs font-medium text-[#3c4043]">Number of demo profiles (1–25)</label>
-              <input id="demo-count" type="number" required min={1} max={25} step={1} value={form.count}
+              <input id="demo-count" type="number" required min={1} max={buyer ? Math.max(1, remainingQuantity(buyer)) : 25} step={1} value={form.count}
                 onChange={(event) => updateForm("count", event.target.value)} className={inputClass} />
+              {buyer ? <p className="text-[11px] leading-4 text-[#5f6368]">Your generated count will be capped at {remainingQuantity(buyer)} samples for this request.</p> : null}
             </div>
 
-            <Button type="submit" className="h-12 w-full rounded-xl border border-gold/20 bg-[linear-gradient(180deg,#f8edd3_0%,#e6d2a8_46%,#c9a86f_100%)] text-sm font-semibold text-[#171208] shadow-[0_16px_36px_-18px_rgba(230,210,168,0.42)] hover:brightness-105">
-              Generate demo
+            <Button type="submit" disabled={Boolean(buyer && remainingQuantity(buyer) === 0)} className="h-12 w-full rounded-xl border border-gold/20 bg-[linear-gradient(180deg,#f8edd3_0%,#e6d2a8_46%,#c9a86f_100%)] text-sm font-semibold text-[#171208] shadow-[0_16px_36px_-18px_rgba(230,210,168,0.42)] hover:brightness-105">
+              Generate demo addresses
             </Button>
           </form>
         ) : (
@@ -262,15 +289,40 @@ export function AutoBotPanel({ active }: { active: boolean }) {
             </div>
 
             {stage === "complete" ? (
-              <Button type="button" onClick={() => {
-                setStage("idle");
-                setProgress(0);
-                setAction("");
-                setRevealed(0);
-                setAddresses([]);
-              }} className="h-12 w-full rounded-xl border border-gold/20 bg-[linear-gradient(180deg,#f8edd3_0%,#e6d2a8_46%,#c9a86f_100%)] text-sm font-semibold text-[#171208] shadow-[0_16px_36px_-18px_rgba(230,210,168,0.42)] hover:brightness-105">
-                Create another demo set
-              </Button>
+              <div className="space-y-3">
+                {buyer ? (
+                  <Button type="button" onClick={async () => {
+                    if (saleHandled.current) return;
+                    saleHandled.current = true;
+                    if (await onSellDemo(total)) {
+                      setAddresses([]);
+                      setRevealed(0);
+                      setProgress(0);
+                      setAction("");
+                      setStage("idle");
+                      setSaleNotice("");
+                    } else {
+                      saleHandled.current = false;
+                    }
+                  }} className="h-12 w-full rounded-xl border border-[#228BE6]/20 bg-[#228BE6] text-sm font-semibold text-white shadow-[0_12px_28px_-16px_rgba(34,139,230,0.65)] hover:bg-[#1c7ed6]">
+                    Sell Now to {buyer.buyer}
+                  </Button>
+                ) : (
+                  <p className="rounded-xl border border-[#e8eaed] bg-[#f8f9fa] px-3 py-3 text-center text-xs leading-5 text-[#5f6368]">
+                    To mark these samples against a request, return Home and choose a buyer first.
+                  </p>
+                )}
+                <Button type="button" onClick={() => {
+                  setStage("idle");
+                  setProgress(0);
+                  setAction("");
+                  setRevealed(0);
+                  setAddresses([]);
+                  setSaleNotice("");
+                }} className="h-12 w-full rounded-xl border border-gold/20 bg-[linear-gradient(180deg,#f8edd3_0%,#e6d2a8_46%,#c9a86f_100%)] text-sm font-semibold text-[#171208] shadow-[0_16px_36px_-18px_rgba(230,210,168,0.42)] hover:brightness-105">
+                  Create another demo set
+                </Button>
+              </div>
             ) : null}
           </div>
         )}

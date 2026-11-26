@@ -14,9 +14,9 @@ This milestone includes the Mini App shell, design system, Telegram identity lay
 | UI | Tailwind CSS v4 + shadcn/ui conventions (`components/ui`, cva, `cn`) |
 | Icons | lucide-react |
 | Telegram | Telegram WebApp SDK, hand-typed wrapper (no global type package) |
-| Backend | Next.js Route Handlers (`/api/auth`, `/api/referral`) |
-| Auth | Server-side `initData` HMAC-SHA256 validation |
-| Database | Neon PostgreSQL (`pg`) for durable referral records; configure the server-only `DATABASE_URL` |
+| Backend | Next.js Route Handlers (`/api/auth`, `/api/referral`, `/api/market`, `/api/admin`, `/api/auto-bot`) |
+| Auth | Telegram `initData` HMAC for users; HttpOnly cookie + server-side password for admin |
+| Database | Neon PostgreSQL (`pg`) for referral records, market listings and user-scoped demo receipts; configure the server-only `DATABASE_URL` |
 
 ## Run it
 
@@ -34,10 +34,18 @@ Copy `.env.example` to `.env.local` for local development. Create a Neon project
 `DATABASE_URL` to its pooled connection string (Neon Console → project → **Connect**);
 keep it server-only, never `NEXT_PUBLIC_`. Set `TELEGRAM_BOT_TOKEN` server-side for
 `POST /api/auth` and `/api/referral`; it must be the current token from BotFather.
-The app creates its referral tables on first use. After creating the bot with BotFather, set
-`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (required for invite links); the browser-only
-**Open in Telegram** link appears as soon as the username is set (hidden inside
-Telegram). Rebuild after changing `NEXT_PUBLIC_*` values.
+The app creates its referral and market tables on first use. After creating the bot with
+BotFather, set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (required for invite links); the
+browser-only **Open in Telegram** link appears as soon as the username is set (hidden
+inside Telegram). Rebuild after changing `NEXT_PUBLIC_*` values.
+
+The admin panel at `/admin` needs two more server-only values: `ADMIN_PASSWORD` (12+
+characters) and `ADMIN_SESSION_SECRET` (32+ characters). See [Market admin](#market-admin).
+`MARKET_SEED_DEMO=false` skips the six fictional starter listings on a fresh database.
+
+Auto Bot activation keys are generated inside `/admin` and stored in Postgres — no env value
+or restart is required. `AUTOBOT_ACTIVATION_KEY_SHA256` remains optional for env-only
+deployments; see [Auto Bot activation keys](#auto-bot-activation-keys).
 
 ## Structure
 
@@ -45,13 +53,32 @@ Telegram). Rebuild after changing `NEXT_PUBLIC_*` values.
 app/
   layout.tsx              root shell, metadata, SDK <Script beforeInteractive>
   page.tsx                renders <MiniApp />
+  robots.ts               allows the app, disallows /admin
   globals.css             tokens, glass/aurora/grain, motion, reduced-motion
+  admin/
+    layout.tsx            unindexed admin shell, no Telegram chrome
+    page.tsx              session gate -> <AdminLogin /> or <AdminDashboard />
   api/auth/route.ts       POST initData -> verified user | 401
   api/referral/route.ts   POST initData -> upsert, signed attribution, summary
+  api/admin/session/       POST password -> HttpOnly cookie, DELETE sign-out
+  api/admin/activation-keys/     GET issued keys, POST generate (secret returned once)
+  api/admin/activation-keys/[id]/  DELETE revoke
+  api/auto-bot/activate/   POST key -> 200 accepted | 401 invalid | 429 throttled
+  api/market/buyers/       GET public feed | private scope, POST admin create
+  api/market/buyers/[id]/  PATCH admin edit/status, DELETE admin archive
+  api/demo-sales/          POST verified receipt load/import/create
 components/
+  admin/
+    admin-login.tsx       password form, setup instructions, error copy
+    admin-dashboard.tsx   stats, search/filter, create/edit, pause/archive, key panel
+    activation-key-panel.tsx  generate a key, copy it once, list and revoke keys
+    listing-form.tsx      validated create/edit form with inline field errors
+    listing-row.tsx       one listing with status and actions
+    field-styles.ts       shared input/label/error classes
   miniapp/
     mini-app.tsx          client shell: tabs, hash routing, Telegram boot
     use-referral.ts       loads referral data on verified Telegram launch
+    market-list.tsx       Home buyer-request list fed by /api/market/buyers
     panels/referral-panel.tsx  invite link, verified counts, recent sign-ups
     tab-bar.tsx           shared bottom nav, sliding gold indicator, arrow-key support
     top-bar.tsx           shared brand bar (same website and Telegram UI)
@@ -60,6 +87,11 @@ components/
   ui/                     button, badge, card (shadcn conventions)
 lib/
   referral.ts             shared referral code/link helpers
+  activation-keys.ts      key format, normalization, hint and label validation
+  activation-key-store-postgres.ts  key schema, generate/hash/list/revoke/verify
+  market.ts               shared listing types, validation, progress/BDT/time helpers
+  market-store-postgres.ts  market schema, seed, list/create/update/status
+  admin-auth.ts           password digest check, signed session cookie, CSRF guard
   referral-store-postgres.ts  Neon schema, code generation, signed attribution
   telegram.ts             typed SDK subset, version gating, init, haptics, share
   telegram-auth.ts        HMAC signature validation (server only)
@@ -154,6 +186,116 @@ Prerequisites — the panel stays locked until these are true:
 
 Referral data is unavailable in a plain browser because no verified Telegram account is attached.
 
+## Market admin
+
+`/admin` manages the buyer requests shown on Home. It is protected by a server-side
+password and an HttpOnly `SameSite=Strict` session cookie; the page is `noindex`,
+`X-Frame-Options: DENY`, and disallowed in `robots.txt`.
+
+Setup:
+
+1. Set `ADMIN_PASSWORD` (12+ characters) and `ADMIN_SESSION_SECRET` (32+ characters) as
+   server-only variables, then restart the server. Generate both with:
+
+   ```bash
+   node -e "const c=require('node:crypto');console.log(c.randomBytes(18).toString('base64url'));console.log(c.randomBytes(48).toString('base64url'))"
+   ```
+
+2. Open `/admin` and sign in. Create, edit, pause/reopen, or archive listings. The
+   **Delivered so far** field records how many of the requested accounts a buyer already
+   has; it drives the progress bar in both the admin list and the Home feed.
+3. Home fetches `GET /api/market/buyers` on mount, so saved changes appear on the next
+   visit without a deploy. Nothing is cached (`Cache-Control: no-store`).
+4. Each open Home listing carries a **Sell Now** button that opens **Auto Bot** with that
+   buyer selected. The Auto Bot demo requires age 18+ and a simulation-only passphrase of at
+   least 8 characters. After fictional addresses are generated, **Sell Now** records a
+   illustrative receipt for that buyer in Neon PostgreSQL for the verified Telegram account,
+   updates Home's delivered count, and adds the sample proceeds to the Profile's clearly labeled
+   non-withdrawable demo balance. Existing browser-only receipts are imported on the next
+   verified Telegram launch. No real accounts are created, transferred or sold, and no payment is
+   made. Creating another demo set is also available after generation. Once a request is fully
+   delivered (`fulfilled` plus that user's saved demo receipts equals `quantity`), the button is
+   replaced by a **Fully delivered** badge.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/market/buyers` | public | Open listings, newest first, contact fields stripped |
+| `POST` | `/api/demo-sales` | verified Telegram `initData` | Load/import own receipts, or persist a demo sale |
+| `GET` | `/api/market/buyers?scope=admin` | admin cookie | Every listing, including paused and archived |
+| `POST` | `/api/market/buyers` | admin cookie | Create a listing (`201`) |
+| `PATCH` | `/api/market/buyers/:id` | admin cookie | Update a listing, or `{ "status": "paused" }` alone |
+| `DELETE` | `/api/market/buyers/:id` | admin cookie | Archive (soft status change, not a row delete) |
+| `POST` | `/api/admin/session` | password | Sign in, sets the session cookie |
+| `DELETE` | `/api/admin/session` | same origin | Sign out, clears the cookie |
+
+Security details:
+
+- Password comparison hashes both sides with SHA-256 and uses `timingSafeEqual`.
+- Session tokens carry an expiry (`8 h`) plus a random nonce and an HMAC signature; the
+  cookie is `httpOnly`, `secure` in production and `SameSite=Strict`.
+- Six failed sign-ins per client address per 10 minutes return `429` with `Retry-After`.
+- Every mutation requires an `Origin` header matching the request origin, which blocks
+  cross-site form posts even with a valid cookie.
+- Listing input is always re-validated on the server (`parseBuyerInput` in `lib/market.ts`);
+  the form is a convenience, not the source of truth. `fulfilled` defaults to `0` when
+  omitted, must be a whole number `0..quantity`, and is also enforced by a database
+  `CHECK` constraint so a bad write cannot pass the API.
+- The public feed returns open rows only and nulls `note` and `telegramUsername`, so
+  internal notes and buyer handles never reach the Mini App.
+
+Storage: the `market_buyers` table is created on first use, alongside a
+`(status, created_at DESC)` index. The `fulfilled` column (`INTEGER NOT NULL DEFAULT 0`)
+is added to older installs by `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, and the
+`market_buyers_fulfilled_range` check (`0 <= fulfilled <= quantity`) is created once and
+validated in place. When the table is empty, six clearly fictional starter rows are seeded
+once; set `MARKET_SEED_DEMO=false` to skip that on a fresh install. Archiving never deletes
+a row, so the audit trail survives.
+
+Listings are presentational only — no credentials, payment, escrow or account hand-off is
+implemented anywhere in the app. Demo sale receipts are stored in `demo_sales`, scoped by
+verified Telegram ID, and never represent real sales or withdrawable funds. The API checks
+listing availability and receipt quantity inside a database transaction; receipt IDs are unique
+per user for safe retries. Browser receipts surviving from the prior version are validated and
+considered at most once per Telegram account (tracked in `demo_sales_migrations`) on its first
+receipt load. The delivered count is bookkeeping for a fictional requirement; nothing is actually
+transferred.
+
+## Auto Bot activation keys
+
+After signing into `/admin`, use the **Auto Bot → Activation keys** section to create a key,
+optionally add an internal label, copy it once, and later revoke it. Keys use a case-insensitive,
+human-typable format such as `ADU-8F2K-QW7M-3XPR-9TLD-6HZN`. Send the full key to its intended
+recipient, who pastes it into the Auto Bot panel. The panel is simulation-only: activation does
+not create Gmail accounts, verify identities, accept credentials, or trigger delivery/payment.
+
+The `/api/admin/activation-keys` endpoints require the same signed admin session and same-origin
+protection as market mutations. The key plaintext is returned only in the successful `POST`
+response and held in the admin page state until dismissed; Postgres stores only a SHA-256 digest,
+a masked hint, label, use count and timestamps. A forgotten key cannot be recovered — revoke it
+and issue another. Revocation takes effect immediately, and successful activations update the use
+count and last-used timestamp. Failed attempts are throttled per client address (10 per 10 minutes
+per application instance).
+
+The key table is created automatically in Postgres the first time the admin panel or the
+activation endpoint needs it. `DATABASE_URL` is required for keys issued in `/admin`; no new
+environment variable or server restart is needed. `AUTOBOT_ACTIVATION_KEY_SHA256` remains
+available as an env-only fallback: copy the digest shown under the admin key's **Env-only
+fallback** disclosure, or generate one with the command in `.env.example`. Store only the
+SHA-256 hex digest in that server-only variable, never the plaintext key. The activation
+endpoint accepts both the verbatim key and its normalized (uppercase, no separators) form for
+this legacy fallback.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/admin/activation-keys` | admin cookie | Key metadata: label, hint, uses (never plaintext) |
+| `POST` | `/api/admin/activation-keys` | admin cookie + same origin | Issue a key; plaintext returned exactly once |
+| `DELETE` | `/api/admin/activation-keys/:id` | admin cookie + same origin | Revoke immediately, keep the audit row |
+| `POST` | `/api/auto-bot/activate` | public, throttled | Verify a key: `200`, `401` or `429` |
+
+Storage: `activation_keys` (`id`, `label`, unique `key_hash`, `key_hint`, `created_at`,
+`revoked_at`, `last_used_at`, `use_count`) is created on first use with a
+`(created_at DESC)` index. Nothing is deleted, and no manual migration is needed on Neon.
+
 ## Deploying as a Mini App
 
 1. Deploy this Next.js app to an HTTPS host (for example Vercel). Use the same deployed
@@ -178,8 +320,10 @@ exist inside Telegram; profile identity is not simulated on the website. Deep li
 pass supported tab names with `?startapp=referral`, etc. Localhost cannot be opened as a
 Telegram Mini App; use an HTTPS deployment or tunnel for Telegram testing.
 
-`next.config.ts` sends `Content-Security-Policy: frame-ancestors` for Telegram origins;
-`X-Frame-Options` has no "allow all" value and is intentionally not used.
+`next.config.ts` sends `Content-Security-Policy: frame-ancestors` for Telegram origins on
+the Mini App pages. `X-Frame-Options` has no "allow all" value, so it is not used there;
+`/admin` is the exception and sends `X-Frame-Options: DENY` plus `frame-ancestors 'none'`,
+so it can never be framed.
 
 - **Invite link shows "bot application not found"** — copy the bot's menu-button link and share it instead.
 - **Your invite link is unavailable** — reopen AdUnity in Telegram and try again.

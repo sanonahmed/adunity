@@ -15,6 +15,7 @@ type ProfilePanelProps = {
   user: TelegramUser | null;
   referral: ReferralSummary | null;
   loading: boolean;
+  demoBalanceBdt: number;
 };
 
 function count(value: number): string {
@@ -47,7 +48,7 @@ function StatCard({
 }
 
 /** Telegram identity and a BDT referral earnings overview. */
-export function ProfilePanel({ active, user, referral, loading }: ProfilePanelProps) {
+export function ProfilePanel({ active, user, referral, loading, demoBalanceBdt }: ProfilePanelProps) {
   const name = user ? [user.first_name, user.last_name].filter(Boolean).join(" ") : "Telegram profile";
   const earnings = referral?.rewards.earnedBdt ?? null;
 
@@ -91,7 +92,8 @@ export function ProfilePanel({ active, user, referral, loading }: ProfilePanelPr
           <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-gold/15 bg-gold-soft text-gold"><Coins className="size-4" aria-hidden="true" /></span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <StatCard icon={CircleDollarSign} label="Earned" value={earnings === null ? "BDT —" : `${bdtFormat.format(earnings)} BDT`} detail="From referred users’ ad revenue" featured />
+          <StatCard icon={WalletCards} label="Demo balance" value={`${bdtFormat.format(demoBalanceBdt)} BDT`} detail="Illustrative proceeds · not withdrawable" featured />
+          <StatCard icon={CircleDollarSign} label="Earned" value={earnings === null ? "BDT —" : `${bdtFormat.format(earnings)} BDT`} detail="From referred users’ ad revenue" />
           <StatCard icon={WalletCards} label="Commission" value={`${referral?.rewards.commissionPercent ?? 25}%`} detail="Share of referred ad revenue" />
           <StatCard icon={UserRound} label="Verified referrals" value={referral ? count(referral.invitedCount) : loading ? "…" : "—"} detail="Users attributed to your link" />
           <StatCard icon={CalendarDays} label="Invites today" value={referral ? count(referral.stats.today) : loading ? "…" : "—"} detail="Verified sign-ups today" />

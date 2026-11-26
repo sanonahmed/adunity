@@ -1,23 +1,19 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  ArrowRight,
-  Compass,
-  Megaphone,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Compass, Megaphone, ShieldCheck, Sparkles } from "lucide-react";
 import {
   hapticTap,
   initTelegram,
+  INK,
   isTelegramClient,
+  setChromeColor,
   type TelegramUser,
 } from "@/lib/telegram";
 import { useReferral } from "./use-referral";
+import { MarketList } from "./market-list";
+import { demoBalanceBdt, parseDemoSales, remainingQuantity, type BuyerRequest, type DemoSaleRecord } from "@/lib/market";
+import { clearLegacyDemoSales, createDemoSaleId, readLegacyDemoSales } from "@/lib/demo-sales";
 import { ReferralPanel } from "./panels/referral-panel";
 import { ProfilePanel } from "./panels/profile-panel";
 import { AutoBotPanel } from "./panels/auto-bot-panel";
@@ -25,11 +21,15 @@ import { TabBar } from "./tab-bar";
 import { REFERRAL_COMMISSION_PERCENT } from "@/lib/referral";
 import { isTabId, type TabId } from "./tabs";
 import { TopBar } from "./top-bar";
+import { Toast, useToast } from "./toast";
 
 /* Avoid useLayoutEffect's server warning while resolving Telegram/deep-link
    state before the first browser paint. */
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** Stable empty list while saved receipts are restored after mount. */
+const NO_DEMO_SALES: DemoSaleRecord[] = [];
 
 /** `?startapp=referral` -> "referral". Unknown values fall back to Home. */
 function tabFromStartParam(value: string | null | undefined): TabId | null {
@@ -41,12 +41,53 @@ function tabFromStartParam(value: string | null | undefined): TabId | null {
 export function MiniApp() {
   const [active, setActive] = useState<TabId>("home");
   const [user, setUser] = useState<TelegramUser | null>(null);
-  /* Signed launch payload; empty until the browser-only check below runs. */
+  const [selectedBuyer, setSelectedBuyer] = useState<BuyerRequest | null>(null);
+  const [demoSales, setDemoSales] = useState<DemoSaleRecord[] | null>(null);
+  const demoSalesRef = useRef<DemoSaleRecord[] | null>(null);
+  const pendingDemoSaleRef = useRef<{ buyerId: string; quantity: number; id: string } | null>(null);
+  /* Signed launch payload; empty until the Telegram SDK is initialized below. */
   const [initData, setInitData] = useState("");
+  /* Keep the shared toast host mounted for other app notifications. */
+  const { message: toastMessage, show: showToast } = useToast();
   const referral = useReferral(initData);
+  /* The Auto Bot section paints its own white page, so the chrome around it
+     (canvas, top bar, tab bar, Telegram strip) switches along with the tab. */
+  const lightSurface = active === "ads";
   const tabHistory = useRef<TabId[]>(["home"]);
   /* StrictMode re-runs effects; history entries must not be duplicated. */
   const seededHistory = useRef(false);
+
+  useEffect(() => {
+    demoSalesRef.current = null;
+    setDemoSales(null);
+    if (!initData) return;
+
+    const controller = new AbortController();
+    const legacySales = readLegacyDemoSales();
+    void fetch("/api/demo-sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData, legacySales }),
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json() as { ok?: boolean; sales?: unknown; error?: string };
+        if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) {
+          throw new Error(payload.error ?? "store_error");
+        }
+        const restoredSales = parseDemoSales(payload.sales);
+        demoSalesRef.current = restoredSales;
+        setDemoSales(restoredSales);
+        clearLegacyDemoSales();
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        showToast("Demo receipts couldn't be loaded from the database. Please retry later.");
+      });
+
+    return () => controller.abort();
+  }, [initData, showToast]);
 
   useIsomorphicLayoutEffect(() => {
     const app = initTelegram();
@@ -115,6 +156,26 @@ export function MiniApp() {
     return () => backButton.offClick(goBack);
   }, [active]);
 
+  useIsomorphicLayoutEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRootBackground = root.style.backgroundColor;
+    const previousBodyBackground = body.style.backgroundColor;
+    const previousColorScheme = root.style.colorScheme;
+    const background = lightSurface ? "#ffffff" : "";
+
+    root.style.backgroundColor = background;
+    root.style.colorScheme = lightSurface ? "light" : "";
+    body.style.backgroundColor = background;
+    setChromeColor(lightSurface ? "#ffffff" : INK);
+
+    return () => {
+      root.style.backgroundColor = previousRootBackground;
+      root.style.colorScheme = previousColorScheme;
+      body.style.backgroundColor = previousBodyBackground;
+    };
+  }, [lightSurface]);
+
   function navigate(id: TabId) {
     if (id === active) return;
     hapticTap();
@@ -124,12 +185,20 @@ export function MiniApp() {
   }
 
   return (
-    <div className="app-canvas min-h-dvh overflow-x-hidden">
-      <div className="aurora" aria-hidden="true" />
-      <div className="grain" aria-hidden="true" />
+    <div
+      className={`app-canvas min-h-dvh overflow-x-hidden${lightSurface ? " app-canvas-light" : ""}`}
+    >
+      {/* The ambient layers are fixed-position children of the canvas, so they
+          would tint the white page through its stacking context. */}
+      {lightSurface ? null : (
+        <>
+          <div className="aurora" aria-hidden="true" />
+          <div className="grain" aria-hidden="true" />
+        </>
+      )}
 
       <div className="relative z-10 flex min-h-dvh flex-col">
-        <TopBar />
+        <TopBar light={lightSurface} />
 
         <main className="mx-auto w-full max-w-md flex-1 px-5 pb-36">
           <section
@@ -140,44 +209,18 @@ export function MiniApp() {
             hidden={active !== "home"}
             className="panel-enter pt-9 outline-none"
           >
-            <div className="rise">
-              <Badge variant="gold">
-                <span className="size-1.5 rounded-full bg-gold" aria-hidden="true" />
-                Built for Telegram
-              </Badge>
+            <h1 className="sr-only">AdUnity</h1>
 
-              <h1 className="display mt-5">
-                <span className="block text-foreground">Meet</span>
-                <span className="gold-text mt-1 block">AdUnity.</span>
-              </h1>
+            <MarketList
+              demoSales={demoSales ?? NO_DEMO_SALES}
+              onNavigateToAutoBot={(request) => {
+                // MarketList already includes saved demo receipts in fulfilled.
+                setSelectedBuyer(request);
+                navigate("ads");
+              }}
+            />
 
-              <p className="mt-5 max-w-[33ch] text-[15px] leading-relaxed text-muted-foreground">
-                Discover, share and grow — all inside Telegram. Your referral
-                dashboard tracks every verified invitation in one place.
-              </p>
-            </div>
-
-            <div className="rise-late mt-8 flex gap-3">
-              <Button
-                size="lg"
-                className="flex-1"
-                onClick={() => navigate("ads")}
-              >
-                Explore AdUnity
-                <ArrowRight aria-hidden="true" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                aria-label="Go to your profile"
-                onClick={() => navigate("profile")}
-                className="px-4"
-              >
-                <UserRound aria-hidden="true" />
-              </Button>
-            </div>
-
-            <div className="glass mt-10 rounded-3xl p-5">
+            <div className="glass mt-6 rounded-3xl p-5">
               <div className="flex items-center justify-between gap-3">
                 <p className="eyebrow">Your progress</p>
                 <span className="grid size-8 place-items-center rounded-lg border border-gold/15 bg-gold-soft text-gold">
@@ -243,17 +286,64 @@ export function MiniApp() {
             user={user}
             referral={referral.summary}
             loading={referral.loading}
+            demoBalanceBdt={demoBalanceBdt(demoSales ?? NO_DEMO_SALES)}
           />
 
-          <AutoBotPanel active={active === "ads"} />
+          <AutoBotPanel
+            active={active === "ads"}
+            buyer={selectedBuyer}
+            onSellDemo={async (quantity) => {
+              if (!selectedBuyer || quantity < 1 || demoSalesRef.current === null || !initData) {
+                showToast("Open AdUnity from Telegram and wait for your receipts to load before saving a demo sale.");
+                return false;
+              }
+              const sold = Math.min(quantity, remainingQuantity(selectedBuyer));
+              if (sold < 1) return false;
+
+              try {
+                const pending = pendingDemoSaleRef.current;
+                const saleId = pending?.buyerId === selectedBuyer.id && pending.quantity === sold
+                  ? pending.id
+                  : createDemoSaleId();
+                pendingDemoSaleRef.current = { buyerId: selectedBuyer.id, quantity: sold, id: saleId };
+                const response = await fetch("/api/demo-sales", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    initData,
+                    sale: { id: saleId, buyerId: selectedBuyer.id, quantity: sold },
+                  }),
+                  cache: "no-store",
+                });
+                const payload = await response.json() as { ok?: boolean; sales?: unknown; error?: string };
+                if (!response.ok || !payload.ok || !Array.isArray(payload.sales)) {
+                  showToast(payload.error === "quantity_unavailable"
+                    ? "The remaining demo quantity changed. Please return Home and try again."
+                    : "The demo sale couldn't be saved to the database. Please try again.");
+                  return false;
+                }
+                const savedSales = parseDemoSales(payload.sales);
+                pendingDemoSaleRef.current = null;
+                demoSalesRef.current = savedSales;
+                setDemoSales(savedSales);
+                clearLegacyDemoSales();
+                setSelectedBuyer(null);
+                navigate("home");
+                return true;
+              } catch {
+                showToast("The demo sale couldn't be saved to the database. Please check your connection and retry.");
+                return false;
+              }
+            }}
+          />
 
         </main>
 
-        <TabBar active={active} onChange={navigate} />
+        <TabBar active={active} onChange={navigate} light={lightSurface} />
 
       </div>
 
-      {/* __TOAST__ */}
+      <Toast message={toastMessage} />
     </div>
   );
 }

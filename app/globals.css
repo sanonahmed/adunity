@@ -108,6 +108,14 @@
   min-height: 100dvh;
 }
 
+/* The Auto Bot section paints a white page. Its ambient layers are simply not
+   rendered there, and native widgets (select menus, scrollbars, caret) must not
+   keep inheriting the dark `color-scheme` from :root. */
+.app-canvas-light {
+  background-color: #fff;
+  color-scheme: light;
+}
+
 .aurora {
   position: fixed;
   inset: -18% -12%;
